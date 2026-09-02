@@ -26,7 +26,7 @@ function Write-Banner {
     Write-Host "  ║                      M A G I C I A N S   R E V E A L                     ║" -ForegroundColor Yellow
     Write-Host "  ║                                                                          ║" -ForegroundColor DarkYellow
     Write-Host "  ║                     Professional Cheat Forensic Scanner                  ║" -ForegroundColor White
-    Write-Host "  ║                                v3.0                                      ║" -ForegroundColor DarkGray
+    Write-Host "  ║                                    v2.0                                      ║" -ForegroundColor DarkGray
     Write-Host "  ║                                                                          ║" -ForegroundColor DarkYellow
     Write-Host "  ╚══════════════════════════════════════════════════════════════════════════╝" -ForegroundColor DarkYellow
     Write-Host ""
