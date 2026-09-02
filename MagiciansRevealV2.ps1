@@ -149,6 +149,11 @@ $suspiciousPatterns = @(
 )
 
 $cheatStrings = @(
+    # Generic module labels: useful when the client brand/name has been removed
+    "Aim Assist", "Auto Switch", "Health Indicators", "Horizontal Speed",
+    "In Air", "No Jump Delay", "NoJumpDelay", "Place Delay", "Player ESP",
+    "Self Destruct", "Speed Multiplier", "Storage ESP", "Switch Back",
+    "Switch Delay", "TriggerBot", "Vertical Speed", "Auto Web", "Autoclicker",
     "AutoCrystal", "autocrystal", "auto crystal", "cw crystal",
     "dontPlaceCrystal", "dontBreakCrystal", "dev.virel", "orchard",
     "AutoHitCrystal", "autohitcrystal", "canPlaceCrystalServer", "healPotSlot",
@@ -364,10 +369,10 @@ function Scan-System {
                             -Message "Flag: $($Matches[0])" -Evidence @{Argument=$Matches[0]}
                     }
 
-                    $agentMatches = [regex]::Matches($cmd, '-javaagent:([^\s"]+)')
+                    $agentMatches = [regex]::Matches($cmd, '-javaagent:(?:"([^"]+)"|([^\s]+))')
                     $legitAgents = @("jmxremote","yjp","jrebel","newrelic","jacoco","theseus")
                     foreach ($am in $agentMatches) {
-                        $agentPath = $am.Groups[1].Value.Trim('"').Trim("'")
+                        $agentPath = if ($am.Groups[1].Success) { $am.Groups[1].Value } else { $am.Groups[2].Value }
                         $agentName = [System.IO.Path]::GetFileName($agentPath)
                         $isLegit = $false
                         foreach ($la in $legitAgents) {
@@ -478,11 +483,13 @@ function Scan-System {
         }
         if (-not $nameHit -and $file.Extension -in @('.log','.txt','.json','.xml','.dmp')) {
             try {
-                $hit = Select-String -LiteralPath $file.FullName -Pattern $cheatStrings -SimpleMatch -CaseSensitive:$false -List -ErrorAction SilentlyContinue
-                if ($hit) {
-                    Add-Finding -Tier "Warning" -Category "Residual Artifacts" -Title "Cheat String in Residual Artifact" `
-                        -Message "String '$($hit.Matches[0].Value)' found in $($file.FullName)" `
-                        -Evidence @{File=$file.FullName; String=$hit.Matches[0].Value; LastWrite=$file.LastWriteTime.ToString("o")}
+                    $hit = Select-String -LiteralPath $file.FullName -Pattern $cheatStrings -SimpleMatch -CaseSensitive:$false -List -ErrorAction SilentlyContinue
+                    if ($hit) {
+                        $matchedText = [string]$hit.Pattern
+                        if ([string]::IsNullOrWhiteSpace($matchedText)) { $matchedText = [string]$hit.Line }
+                        Add-Finding -Tier "Warning" -Category "Residual Artifacts" -Title "Cheat String in Residual Artifact" `
+                            -Message "Possible signature found in $($file.FullName)" `
+                            -Evidence @{File=$file.FullName; String=$matchedText; LastWrite=$file.LastWriteTime.ToString("o")}
                 }
             } catch {}
         }
@@ -494,15 +501,15 @@ function Scan-System {
 function Scan-MinecraftUniverse {
     Write-Host "Discovering Minecraft, Java, and launcher locations..." -ForegroundColor Green
     $roots = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    $home = $env:USERPROFILE
+    $userProfileRoot = $env:USERPROFILE
     @(
-        "$home\AppData\Roaming\.minecraft",
-        "$home\AppData\Roaming\.minecraft\logs",
-        "$home\AppData\Roaming\PrismLauncher",
-        "$home\AppData\Roaming\MultiMC",
-        "$home\AppData\Roaming\ATLauncher",
-        "$home\AppData\Local\Packages\Microsoft.4297127D64EC6_8wekyb3d8bbwe\LocalCache\Local\game",
-        "$home\AppData\Local\Temp"
+        "$userProfileRoot\AppData\Roaming\.minecraft",
+        "$userProfileRoot\AppData\Roaming\.minecraft\logs",
+        "$userProfileRoot\AppData\Roaming\PrismLauncher",
+        "$userProfileRoot\AppData\Roaming\MultiMC",
+        "$userProfileRoot\AppData\Roaming\ATLauncher",
+        "$userProfileRoot\AppData\Local\Packages\Microsoft.4297127D64EC6_8wekyb3d8bbwe\LocalCache\Local\game",
+        "$userProfileRoot\AppData\Local\Temp"
     ) | ForEach-Object { if (Test-Path $_ -PathType Container) { [void]$roots.Add((Resolve-Path $_).Path) } }
 
     # Discover actual paths rather than assuming the default .minecraft folder.
@@ -538,8 +545,10 @@ function Scan-MinecraftUniverse {
                 try {
                     $hit = Select-String -LiteralPath $file.FullName -Pattern $cheatStrings -SimpleMatch -CaseSensitive:$false -List -ErrorAction SilentlyContinue
                     if ($hit) {
+                        $matchedText = [string]$hit.Pattern
+                        if ([string]::IsNullOrWhiteSpace($matchedText)) { $matchedText = [string]$hit.Line }
                         Add-Finding -Tier "Warning" -Category "Minecraft Timeline" -Title "Cheat String in Minecraft-Linked File" `
-                            -Message "'$($hit.Matches[0].Value)' found in $($file.FullName)" -Evidence @{File=$file.FullName; String=$hit.Matches[0].Value}
+                            -Message "Possible signature found in $($file.FullName)" -Evidence @{File=$file.FullName; String=$matchedText}
                     }
                 } catch {}
             }
