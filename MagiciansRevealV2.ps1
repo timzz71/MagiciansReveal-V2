@@ -251,4 +251,6 @@ $lines | Set-Content -LiteralPath $txtPath -Encoding UTF8
 if($UploadUri){try{$headers=@{'Authorization'="Bearer $ScanToken"};Invoke-RestMethod -Uri $UploadUri -Method Post -Headers $headers -ContentType 'application/json' -Body ($report|ConvertTo-Json -Depth 12) -ErrorAction Stop | Out-Null;Add-Content $txtPath "Uploaded successfully to $UploadUri"}catch{Add-Content $txtPath "Upload failed; local report retained. $($_.Exception.Message)"}}
 Write-Host "Scan complete. JSON: $jsonPath" -ForegroundColor Green
 Write-Host "Summary: $txtPath"
-Write-Host "Findings: $($Flags.Count) | Detection: $(($Flags|? tier -eq Detection).
+$detectionCount = @($Flags | Where-Object { $_.tier -eq 'Detection' }).Count
+$warningCount = @($Flags | Where-Object { $_.tier -eq 'Warning' }).Count
+Write-Host "Findings: $($Flags.Count) | Detection: $detectionCount | Warning: $warningCount"
