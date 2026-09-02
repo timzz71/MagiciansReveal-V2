@@ -490,6 +490,70 @@ function Scan-System {
 
     Write-Host "System scan complete." -ForegroundColor Green
 }
+
+function Scan-MinecraftUniverse {
+    Write-Host "Discovering Minecraft, Java, and launcher locations..." -ForegroundColor Green
+    $roots = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $home = $env:USERPROFILE
+    @(
+        "$home\AppData\Roaming\.minecraft",
+        "$home\AppData\Roaming\.minecraft\logs",
+        "$home\AppData\Roaming\PrismLauncher",
+        "$home\AppData\Roaming\MultiMC",
+        "$home\AppData\Roaming\ATLauncher",
+        "$home\AppData\Local\Packages\Microsoft.4297127D64EC6_8wekyb3d8bbwe\LocalCache\Local\game",
+        "$home\AppData\Local\Temp"
+    ) | ForEach-Object { if (Test-Path $_ -PathType Container) { [void]$roots.Add((Resolve-Path $_).Path) } }
+
+    # Discover actual paths rather than assuming the default .minecraft folder.
+    foreach ($p in (Get-Process -ErrorAction SilentlyContinue)) {
+        try {
+            $ci = Get-CimInstance Win32_Process -Filter "ProcessId = $($p.Id)" -ErrorAction SilentlyContinue
+            if ($ci.CommandLine -match '(?i)(minecraft|java|launcher|prism|multimc)') {
+                $exe = $ci.ExecutablePath
+                if ($exe) { [void]$roots.Add((Split-Path $exe -Parent)) }
+                foreach ($arg in [regex]::Matches($ci.CommandLine, '(?:"([A-Za-z]:\\[^" ]+)"|([A-Za-z]:\\[^ ]+))')) {
+                    $candidate = if ($arg.Groups[1].Success) { $arg.Groups[1].Value } else { $arg.Groups[2].Value }
+                    if (Test-Path $candidate) { [void]$roots.Add((Split-Path (Resolve-Path $candidate) -Parent)) }
+                }
+            }
+        } catch {}
+    }
+
+    $since = $script:ScanStart
+    $textExt = @('.log','.txt','.json','.xml','.cfg','.config','.properties','.dat','.json5','.crash')
+    foreach ($root in $roots) {
+        Write-Host "Scanning $root" -ForegroundColor DarkGray
+        $files = Get-ChildItem -LiteralPath $root -File -Recurse -Force -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTime -ge $since -and $_.Length -le 100MB }
+        foreach ($file in $files) {
+            foreach ($sig in $suspiciousPatterns) {
+                if ($file.Name -imatch [regex]::Escape($sig)) {
+                    Add-Finding -Tier "Detection" -Category "Minecraft Timeline" -Title "Suspicious Minecraft-Linked Artifact" `
+                        -Message "$($file.FullName) changed after the SS session started" -Evidence @{File=$file.FullName; Signature=$sig; Since=$since.ToString("o")}
+                    break
+                }
+            }
+            if ($textExt -contains $file.Extension.ToLowerInvariant()) {
+                try {
+                    $hit = Select-String -LiteralPath $file.FullName -Pattern $cheatStrings -SimpleMatch -CaseSensitive:$false -List -ErrorAction SilentlyContinue
+                    if ($hit) {
+                        Add-Finding -Tier "Warning" -Category "Minecraft Timeline" -Title "Cheat String in Minecraft-Linked File" `
+                            -Message "'$($hit.Matches[0].Value)' found in $($file.FullName)" -Evidence @{File=$file.FullName; String=$hit.Matches[0].Value}
+                    }
+                } catch {}
+            }
+            if ($file.Extension -ieq '.jar') {
+                $result = Scan-JAR -FilePath $file.FullName
+                if ($result -and (($result.Patterns.Count + $result.Strings.Count + $result.Fullwidth.Count) -gt 0)) {
+                    Add-Finding -Tier "Detection" -Category "Minecraft Timeline" -Title "Signature in Recent Minecraft JAR" `
+                        -Message "$($file.FullName) contains one or more scanner signatures" -Evidence @{File=$file.FullName; LastWrite=$file.LastWriteTime.ToString("o")}
+                }
+            }
+        }
+    }
+    Write-Host "Minecraft/launcher timeline scan complete." -ForegroundColor Green
+}
 #endregion
 
 #region Main
@@ -550,6 +614,7 @@ do {
         }
         "2" {
             Scan-System
+            Scan-MinecraftUniverse
             Read-Host "Press Enter to continue"
         }
         "3" {
