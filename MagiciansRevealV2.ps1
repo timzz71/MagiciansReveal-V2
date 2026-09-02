@@ -10,17 +10,15 @@
     2.0.0
 #>
 
-#region Auto‑Compile to EXE (only if running as .ps1)
+#region Auto‑Compile to EXE
 if ($MyInvocation.MyCommand.Path -match '\.ps1$') {
     $exePath = $MyInvocation.MyCommand.Path -replace '\.ps1$', '.exe'
     if (-not (Test-Path $exePath)) {
         Write-Host "Compiling to EXE..." -ForegroundColor Cyan
-        # Ensure ps2exe is available
         if (-not (Get-Module -ListAvailable -Name ps2exe)) {
             Install-Module -Name ps2exe -Scope CurrentUser -Force -AllowClobber -ErrorAction SilentlyContinue
         }
         Import-Module ps2exe -Force
-        # Compile with GUI, no console, custom version info
         ps2exe -InputFile $MyInvocation.MyCommand.Path -OutputFile $exePath `
                -Title "MagiciansRevealV2" -Version "2.0.0" -Company "Tim`$erz" `
                -Description "Minecraft Cheat Scanner" -NoConsole -ErrorAction SilentlyContinue
@@ -32,17 +30,15 @@ if ($MyInvocation.MyCommand.Path -match '\.ps1$') {
             Write-Warning "Compilation failed – running as script instead."
         }
     } else {
-        # EXE already exists – just run it
         Start-Process -FilePath $exePath
         exit
     }
 }
 #endregion
 
-#region GUI Application (WPF)
+#region GUI (WPF) – NO x:Class, ALL events handled in PowerShell
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms
 
-# XAML without Class directive or inline events – all handlers are added in PowerShell
 $xaml = @'
 <Window
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -83,7 +79,6 @@ $xaml = @'
                 <TextBlock Text="Minecraft Cheat Forensic Scanner" FontSize="24" FontWeight="Bold" Foreground="White" TextAlignment="Center" Margin="0,0,0,10"/>
                 <TextBlock Text="Zero False Positives – Uses cheat‑specific signatures only" Foreground="#AAAAAA" TextAlignment="Center" Margin="0,0,0,20"/>
 
-                <!-- Scan Directory -->
                 <GroupBox Header="Scan Target" Foreground="White" BorderBrush="#444" Margin="0,0,0,15">
                     <StackPanel Orientation="Horizontal" Margin="10">
                         <TextBlock Text="Minecraft Directory:" Foreground="White" VerticalAlignment="Center" Margin="0,0,10,0"/>
@@ -92,7 +87,6 @@ $xaml = @'
                     </StackPanel>
                 </GroupBox>
 
-                <!-- Output Directory -->
                 <GroupBox Header="Report Output" Foreground="White" BorderBrush="#444" Margin="0,0,0,15">
                     <StackPanel Orientation="Horizontal" Margin="10">
                         <TextBlock Text="Save Reports To:" Foreground="White" VerticalAlignment="Center" Margin="0,0,10,0"/>
@@ -101,13 +95,11 @@ $xaml = @'
                     </StackPanel>
                 </GroupBox>
 
-                <!-- Progress -->
                 <StackPanel Margin="0,0,0,15">
                     <TextBlock x:Name="StatusText" Text="Ready" Foreground="#AAAAAA" FontSize="14"/>
                     <ProgressBar x:Name="ProgressBar" Height="20" Foreground="#6A5ACD" Background="#333" Margin="0,5,0,0" Value="0" Minimum="0" Maximum="100"/>
                 </StackPanel>
 
-                <!-- Scan Button -->
                 <Button x:Name="ScanButton" Content="🔍  Start Scan" FontSize="18" FontWeight="Bold" Background="#6A5ACD" Foreground="White" BorderThickness="0" Height="50" Cursor="Hand">
                     <Button.Triggers>
                         <EventTrigger RoutedEvent="Button.MouseEnter">
@@ -119,7 +111,6 @@ $xaml = @'
                     </Button.Triggers>
                 </Button>
 
-                <!-- Results List -->
                 <ListBox x:Name="ResultsList" Margin="0,15,0,0" Height="200" Background="#2A2A2A" Foreground="White" BorderBrush="#444" FontFamily="Consolas" FontSize="12">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
@@ -132,12 +123,10 @@ $xaml = @'
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <!-- Export -->
                 <Button x:Name="ExportButton" Content="📄  Export Report" FontSize="14" Background="#3A3A3A" Foreground="White" BorderThickness="0" Height="40" Margin="0,10,0,0" Cursor="Hand" IsEnabled="False"/>
             </StackPanel>
         </ScrollViewer>
 
-        <!-- Footer -->
         <Border Grid.Row="2" Background="#2A2A2A">
             <TextBlock Text="© 2026 Tim$erz – For Consented Screenshare Investigations Only" Foreground="#777" VerticalAlignment="Center" HorizontalAlignment="Center"/>
         </Border>
@@ -146,15 +135,10 @@ $xaml = @'
 '@
 
 # Load XAML
-try {
-    $xmlReader = New-Object System.Xml.XmlNodeReader ([xml]$xaml)
-    $window = [Windows.Markup.XamlReader]::Load($xmlReader)
-} catch {
-    Write-Error "Failed to load XAML: $_"
-    exit
-}
+$xmlReader = New-Object System.Xml.XmlNodeReader ([xml]$xaml)
+$window = [Windows.Markup.XamlReader]::Load($xmlReader)
 
-# Find controls
+# Get controls
 $MinecraftDirBox = $window.FindName("MinecraftDirBox")
 $OutputDirBox = $window.FindName("OutputDirBox")
 $StatusText = $window.FindName("StatusText")
@@ -166,18 +150,9 @@ $CloseButton = $window.FindName("CloseButton")
 $BrowseMinecraftButton = $window.FindName("BrowseMinecraftButton")
 $BrowseOutputButton = $window.FindName("BrowseOutputButton")
 
-# ---- Event handlers ----
-# Window drag
-$window.AddHandler([System.Windows.Window]::MouseLeftButtonDownEvent, {
-    $window.DragMove()
-})
-
-# Close button
-$CloseButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
-    $window.Close()
-})
-
-# Browse buttons
+# Events
+$window.AddHandler([System.Windows.Window]::MouseLeftButtonDownEvent, { $window.DragMove() })
+$CloseButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, { $window.Close() })
 $BrowseMinecraftButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
     $folder = New-Object System.Windows.Forms.FolderBrowserDialog
     if ($folder.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
@@ -191,8 +166,7 @@ $BrowseOutputButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
     }
 })
 
-#region Scan Logic (Zero False Positives) – The Absolute Best Signature Database
-# All client names from the specification, including rare and legacy
+#region Full Signature Database (Zero False Positives)
 $cheatClientNames = @(
     "Vape","VapeV4","VapeLite","VapeClient",
     "Meteor","MeteorClient",
@@ -283,7 +257,6 @@ $cheatClientNames = @(
     "Asteria","AsteriaClient"
 )
 
-# Cheat‑only package paths (NEVER in legit mods)
 $cheatPackagePaths = @(
     "cc/novoline", "com/alan/clients", "club/maxstats", "wtf/moonlight",
     "me/zeroeightsix/kami", "net/ccbluex", "today/opai", "net/minecraft/injection",
@@ -292,7 +265,6 @@ $cheatPackagePaths = @(
     "dev/virel", "org/jose4j/jwt", "sixtwo/", "fivefive/"
 )
 
-# Cheat module names (exact strings)
 $cheatModules = @(
     "KillAura","Killaura","killaura",
     "CrystalAura","crystalaura",
@@ -387,7 +359,6 @@ $cheatModules = @(
     "AntiBan","antiban"
 )
 
-# Cheat domains (DNS cache)
 $cheatDomains = @(
     "vape.gg","vapeclient.com","meteorclient.com","liquidbounce.net","wurstclient.net",
     "sigmaclient.com","novoware.cc","gamesense.pw","osirisclient.com","cosmosclient.com",
@@ -399,7 +370,6 @@ $cheatDomains = @(
     "vertexclient.net","prestigeclient.vip","dqrkis.xyz","orchard.gg"
 )
 
-# Fullwidth obfuscated strings (cheat‑only)
 $fullwidthPatterns = @(
     "’╝Ī’ĮĢ’Įö’ĮÅ’╝Ż’ĮÆ’ĮÖ’Įō’Įö’Įü’Įī",
     "’╝Ī’ĮĢ’Įö’ĮÅ’╝Ī’ĮÄ’Įā’Įł’ĮÅ’ĮÆ",
@@ -439,7 +409,9 @@ $fullwidthPatterns = @(
     "’╝┴’ĮÆ’Įē’Įć’Įć’Įģ’ĮÆ’╝▓’ĮÅ’Įō’ĮÅ’Įā’Įē’Įģ’Įä",
     "’╝’ĮĢ’Įł’ĮŠ’╝ī’Įł’Įä’Įē’ĮŠ"
 )
+#endregion
 
+#region Scan Functions
 $findings = @()
 function Add-Finding {
     param($Tier, $Category, $Title, $Message, [hashtable]$Evidence = @{})
@@ -591,7 +563,7 @@ function Scan-EventLogs {
 }
 #endregion
 
-#region Scan Button Click
+#region Scan Button
 $ScanButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
     $findings = @()
     $ResultsList.Items.Clear()
@@ -628,7 +600,7 @@ $ScanButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
 })
 #endregion
 
-#region Export Button Click
+#region Export Button
 $ExportButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
     if (-not $script:lastFindings) { return }
     $report = @{
@@ -657,10 +629,7 @@ $ExportButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
 })
 #endregion
 
-# Start the GUI with fade‑in animation
+# Start GUI
 $fadeIn = $window.Resources["FadeIn"]
-if ($fadeIn) {
-    $window.BeginStoryboard($fadeIn)
-}
+if ($fadeIn) { $window.BeginStoryboard($fadeIn) }
 $window.ShowDialog() | Out-Null
-#endregion
