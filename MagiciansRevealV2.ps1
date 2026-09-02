@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-    MagiciansRevealV2 – Console Forensic Scanner
+    MagiciansRevealV2 – Enhanced Forensic Scanner with Self‑Destruct Detection
 .DESCRIPTION
-    Menu-driven PowerShell scanner for Minecraft cheat clients.
-    Uses signature matching, fullwidth detection, obfuscation analysis and runtime checks.
+    Finds Minecraft cheat clients even after they self‑destruct.
+    Uses USN Journal, memory scanning, residual artifact analysis, and JournalTrace integration.
 .AUTHOR
     Magician
 .VERSION
-    3.0.1
+    4.0.0
 #>
 
 #region Initialisation
@@ -15,7 +15,7 @@
 $OutputEncoding = [System.Text.Encoding]::UTF8
 chcp 65001 | Out-Null
 Clear-Host
-Write-Host "Running MagiciansRevealV2 v3.0.2 from: $($MyInvocation.MyCommand.Path)" -ForegroundColor DarkGray
+Write-Host "Running MagiciansRevealV2 v4.0.0 from: $($MyInvocation.MyCommand.Path)" -ForegroundColor DarkGray
 
 $Banner = @"
  ███╗   ███╗ █████╗  ██████╗ ██╗ ██████╗██╗ █████╗ ███╗   ██╗███████╗
@@ -35,8 +35,8 @@ $Banner = @"
 
 Write-Host $Banner -ForegroundColor DarkYellow
 Write-Host ""
-Write-Host "                Magicians Reveal V2" -ForegroundColor White
-Write-Host "                Forensic Scanner" -ForegroundColor DarkGray
+Write-Host "                Magicians Reveal V4" -ForegroundColor White
+Write-Host "            Self‑Destruct & Residual Forensics" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host ("━" * 76) -ForegroundColor Red
 Write-Host ""
@@ -118,9 +118,8 @@ function Scan-AllJavaMemory {
         $uptime = if ($created) { ((Get-Date) - $created).ToString('dd\.hh\:mm\:ss') } else { 'unknown' }
         Write-Host "PID $($p.Id) | $($p.ProcessName) | Started: $created | Uptime: $uptime" -ForegroundColor White
         Add-Finding -Tier "Info" -Category "Java Process" -Title "Java Scan Target" -Message "PID $($p.Id), $($p.ProcessName), uptime $uptime" -Evidence @{PID=$p.Id; Startup=$created; Uptime=$uptime; CommandLine=$cmd}
-        # Live RAM inspection disabled: some Java runtimes can block indefinitely
-        # inside ReadProcessMemory. The normal scan remains fully responsive.
-        Write-Host "RAM scan skipped; continuing with filesystem and process evidence." -ForegroundColor DarkGray
+        # Live RAM inspection
+        Scan-JavaMemory -ProcessId $p.Id
     }
 }
 
@@ -139,11 +138,12 @@ function Write-Header {
 function Show-Menu {
     Write-Header
     Write-Host "1. Scan Minecraft Directory (mods folder)" -ForegroundColor Green
-    Write-Host "2. Scan Full System (Processes, Registry, DNS, JVM)" -ForegroundColor Yellow
+    Write-Host "2. Full System Scan (Processes, Registry, DNS, JVM, USN Journal, Residual Artifacts)" -ForegroundColor Yellow
     Write-Host "3. Export Report (JSON + TXT)" -ForegroundColor Magenta
     Write-Host "4. View Current Findings" -ForegroundColor Cyan
     Write-Host "5. Clear All Findings" -ForegroundColor Red
-    Write-Host "6. Exit" -ForegroundColor Gray
+    Write-Host "6. Download & Run JournalTrace (USN Journal deep analysis)" -ForegroundColor Blue
+    Write-Host "7. Exit" -ForegroundColor Gray
     Write-Host ""
     $choice = Read-Host "Enter choice"
     return $choice
@@ -207,7 +207,6 @@ function Export-Report {
 #endregion
 
 #region Signature Databases
-# Only ASCII-safe strings – fullwidth detection is handled by regex below
 $suspiciousPatterns = @(
     "AimAssist", "AnchorTweaks", "AutoAnchor", "AutoCrystal", "AutoDoubleHand",
     "AutoHitCrystal", "AutoPot", "AutoTotem", "AutoArmor", "InventoryTotem",
@@ -231,7 +230,6 @@ $suspiciousPatterns = @(
 )
 
 $cheatStrings = @(
-    # Generic module labels: useful when the client brand/name has been removed
     "Aim Assist", "Auto Switch", "Health Indicators", "Horizontal Speed",
     "In Air", "No Jump Delay", "NoJumpDelay", "Place Delay", "Player ESP",
     "Self Destruct", "Speed Multiplier", "Storage ESP", "Switch Back",
@@ -356,7 +354,6 @@ $patternRegex = [regex]::new(
 $cheatStringSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 foreach ($s in $cheatStrings) { [void]$cheatStringSet.Add($s) }
 
-# Detect any sequence of fullwidth alphanumeric characters (used by many obfuscated clients)
 $fullwidthRegex = [regex]::new(
     "[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]{3,}",
     [System.Text.RegularExpressions.RegexOptions]::Compiled
@@ -422,10 +419,120 @@ function Scan-JAR {
 }
 #endregion
 
-#region System Scan
-function Scan-System {
-    Write-Host "Scanning system (processes, registry, DNS, JVM)..." -ForegroundColor Green
+#region USN Journal Scanner (Self‑Destruct Detection)
+function Scan-USNJournal {
+    Write-Host "Scanning USN Journal for recently deleted/renamed cheat JARs..." -ForegroundColor Green
+    try {
+        $usn = fsutil usn readjournal C: 2>$null | Select-String -Pattern "File Name.*\.jar" -Context 5,0
+        if (-not $usn) {
+            Write-Host "No USN Journal data found or drive not supported." -ForegroundColor Yellow
+            return
+        }
+        # Parse the output for file names and timestamps
+        foreach ($line in $usn) {
+            $fileName = ($line -split "File Name\s+:\s+")[1].Trim()
+            if ($fileName -match '\.jar$') {
+                # Check if the file name contains any suspicious pattern
+                foreach ($sig in $suspiciousPatterns) {
+                    if ($fileName -match [regex]::Escape($sig)) {
+                        Add-Finding -Tier "Detection" -Category "USN Journal" -Title "Deleted/Renamed Cheat JAR" `
+                            -Message "USN Journal shows recent activity on '$fileName' (signature: $sig)" `
+                            -Evidence @{File=$fileName; Signature=$sig}
+                        break
+                    }
+                }
+                # Also check for common cheat client names
+                foreach ($client in $cheatStrings) {
+                    if ($fileName -match [regex]::Escape($client)) {
+                        Add-Finding -Tier "Detection" -Category "USN Journal" -Title "Deleted/Renamed Cheat Client JAR" `
+                            -Message "USN Journal shows recent activity on '$fileName' (client: $client)" `
+                            -Evidence @{File=$fileName; Client=$client}
+                        break
+                    }
+                }
+            }
+        }
+    } catch {
+        Write-Host "USN Journal scan failed: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+#endregion
 
+#region Residual Artifact Scanner (Deep)
+function Scan-ResidualArtifacts {
+    Write-Host "Scanning residual artifacts (Temp, Prefetch, Logs, CrashDumps)..." -ForegroundColor Green
+    $residualRoots = @(
+        "$env:TEMP",
+        "$env:USERPROFILE\AppData\Local\Temp",
+        "$env:windir\Prefetch",
+        "$env:USERPROFILE\AppData\Roaming\.minecraft\logs",
+        "$env:USERPROFILE\AppData\Roaming\.minecraft\crash-reports",
+        "$env:USERPROFILE\AppData\Local\CrashDumps"
+    ) | Where-Object { Test-Path $_ -PathType Container }
+
+    $files = foreach ($root in $residualRoots) {
+        Get-ChildItem -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue |
+            Where-Object { -not $_.PSIsContainer -and $_.LastWriteTime -ge (Get-Date).AddDays(-7) -and $_.Length -le 50MB }
+    }
+    foreach ($file in ($files | Sort-Object FullName -Unique)) {
+        $content = $null
+        try {
+            if ($file.Length -lt 5MB) {
+                $content = Get-Content -LiteralPath $file.FullName -Raw -ErrorAction SilentlyContinue
+            }
+        } catch {}
+        if ($content) {
+            foreach ($s in $cheatStrings) {
+                if ($content -match [regex]::Escape($s)) {
+                    Add-Finding -Tier "Warning" -Category "Residual Artifact" -Title "Cheat String in Residual File" `
+                        -Message "String '$s' found in $($file.FullName)" `
+                        -Evidence @{File=$file.FullName; String=$s; LastWrite=$file.LastWriteTime.ToString("o")}
+                    break
+                }
+            }
+            foreach ($m in $patternRegex.Matches($content)) {
+                Add-Finding -Tier "Detection" -Category "Residual Artifact" -Title "Pattern in Residual File" `
+                    -Message "Pattern '$($m.Value)' found in $($file.FullName)" `
+                    -Evidence @{File=$file.FullName; Pattern=$m.Value}
+                break
+            }
+        }
+        # Check filename itself
+        foreach ($sig in $suspiciousPatterns) {
+            if ($file.Name -match [regex]::Escape($sig)) {
+                Add-Finding -Tier "Detection" -Category "Residual Artifact" -Title "Suspicious Residual Filename" `
+                    -Message "Filename '$($file.Name)' matches signature '$sig'" `
+                    -Evidence @{File=$file.FullName; Signature=$sig}
+                break
+            }
+        }
+    }
+    Write-Host "Residual artifact scan complete." -ForegroundColor Green
+}
+#endregion
+
+#region JournalTrace Integration
+function Download-And-Run-JournalTrace {
+    Write-Host "Downloading JournalTrace from GitHub..." -ForegroundColor Cyan
+    $url = "https://github.com/0x6d69636b/JournalTrace/releases/latest/download/JournalTrace.exe"
+    $outPath = "$env:TEMP\JournalTrace.exe"
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $outPath -UseBasicParsing
+        Write-Host "Downloaded to $outPath" -ForegroundColor Green
+        Write-Host "Launching JournalTrace with elevated privileges..." -ForegroundColor Cyan
+        Start-Process -FilePath $outPath -Verb RunAs -ArgumentList "--filter .jar"
+    } catch {
+        Write-Host "Failed to download JournalTrace: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "You can manually download from https://github.com/0x6d69636b/JournalTrace" -ForegroundColor Yellow
+    }
+}
+#endregion
+
+#region System Scan (Enhanced)
+function Scan-System {
+    Write-Host "Scanning system (processes, registry, DNS, JVM, USN, Residual)..." -ForegroundColor Green
+
+    # Processes & JVM
     $procs = Get-Process -ErrorAction SilentlyContinue
     foreach ($p in $procs) {
         $name = $p.ProcessName.ToLower()
@@ -471,8 +578,7 @@ function Scan-System {
                             -Message "Xbootclasspath flag detected" -Evidence @{Flag=$Matches[0]}
                     }
 
-                    # Loaded module paths survive a client self-destruct more often
-                    # than the process name or command line. Access is best-effort.
+                    # Loaded modules (native DLLs)
                     foreach ($module in ($p.Modules | Where-Object { $_.FileName })) {
                         $modulePath = $module.FileName
                         $moduleLeaf = [System.IO.Path]::GetFileName($modulePath)
@@ -490,6 +596,7 @@ function Scan-System {
         }
     }
 
+    # Registry
     foreach ($client in $cheatStrings) {
         $path = "HKCU:\Software\$client"
         if (Test-Path $path) {
@@ -498,6 +605,7 @@ function Scan-System {
         }
     }
 
+    # DNS
     $dns = ipconfig /displaydns 2>$null | Select-String "Record Name.*:\s+(.*)" | ForEach-Object { $_.Matches.Groups[1].Value }
     $cheatDomains = @(
         "vape.gg","vapeclient.com","meteorclient.com","liquidbounce.net","wurstclient.net",
@@ -516,6 +624,7 @@ function Scan-System {
         }
     }
 
+    # Prefetch
     $prefetchDir = "$env:windir\Prefetch"
     if (-not (Test-Path $prefetchDir)) {
         Add-Finding -Tier "Detection" -Category "Prefetch" -Title "Prefetch Folder Missing" `
@@ -528,6 +637,7 @@ function Scan-System {
         }
     }
 
+    # Event Logs
     $logs = @("Application", "System", "Security", "Windows PowerShell")
     foreach ($log in $logs) {
         try {
@@ -539,90 +649,54 @@ function Scan-System {
         } catch {}
     }
 
-    # Residual-artifact scan: catches names/content left after a client removes its
-    # main JAR. This is intentionally bounded to high-value forensic locations.
-    $residualRoots = @(
-        "$env:USERPROFILE\AppData\Roaming\.minecraft\logs",
-        "$env:USERPROFILE\AppData\Roaming\.minecraft\crash-reports",
-        "$env:USERPROFILE\AppData\Local\Temp",
-        "$env:windir\Prefetch"
-    ) | Where-Object { Test-Path $_ -PathType Container }
+    # USN Journal (Self‑Destruct detection)
+    Scan-USNJournal
 
-    $residualFiles = foreach ($root in $residualRoots) {
-        Get-ChildItem -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue |
-            Where-Object { -not $_.PSIsContainer -and $_.LastWriteTime -ge (Get-Date).AddDays(-30) -and $_.Length -le 50MB }
-    }
-    foreach ($file in ($residualFiles | Sort-Object FullName -Unique)) {
-        $nameHit = $false
-        foreach ($sig in $suspiciousPatterns) {
-            if ($file.Name -imatch [regex]::Escape($sig)) {
-                Add-Finding -Tier "Detection" -Category "Residual Artifacts" -Title "Suspicious Residual Filename" `
-                    -Message "Recent artifact matches '$sig': $($file.FullName)" `
-                    -Evidence @{File=$file.FullName; Signature=$sig; LastWrite=$file.LastWriteTime.ToString("o")}
-                $nameHit = $true
-                break
-            }
-        }
-        if (-not $nameHit -and $file.Extension -in @('.log','.txt','.json','.xml','.dmp')) {
-            try {
-                    $hit = Select-String -LiteralPath $file.FullName -Pattern $cheatStrings -SimpleMatch -CaseSensitive:$false -List -ErrorAction SilentlyContinue
-                    if ($hit) {
-                        $matchedText = [string]$hit.Pattern
-                        if ([string]::IsNullOrWhiteSpace($matchedText)) { $matchedText = [string]$hit.Line }
-                        Add-Finding -Tier "Warning" -Category "Residual Artifacts" -Title "Cheat String in Residual Artifact" `
-                            -Message "Possible signature found in $($file.FullName)" `
-                            -Evidence @{File=$file.FullName; String=$matchedText; LastWrite=$file.LastWriteTime.ToString("o")}
-                }
-            } catch {}
-        }
-    }
+    # Residual Artifacts
+    Scan-ResidualArtifacts
+
+    # Minecraft universe timeline (files that changed during scan)
+    Scan-MinecraftUniverse
 
     Write-Host "System scan complete." -ForegroundColor Green
 }
+#endregion
 
+#region Minecraft Timeline Scan
 function Scan-MinecraftUniverse {
     Write-Host "Discovering Minecraft, Java, and launcher locations..." -ForegroundColor Green
     $roots = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $userProfileRoot = $env:USERPROFILE
-    $minecraftTargets = @()
+
+    # Active Java processes
     foreach ($p in (Get-Process -Name java,javaw -ErrorAction SilentlyContinue)) {
         try {
             $ci = Get-CimInstance Win32_Process -Filter "ProcessId = $($p.Id)" -ErrorAction SilentlyContinue
             $cmdLine = [string]$ci.CommandLine
-            # Java Update and unrelated JVMs are excluded unless Minecraft evidence exists.
             if ($cmdLine -match '(?i)(minecraft|\.minecraft|fabric|forge|quilt|lwjgl|net\.minecraft|prism|modrinth|multimc)') {
-                $minecraftTargets += [pscustomobject]@{ PID=$p.Id; Process=$p.ProcessName; Active=(-not $p.HasExited); CommandLine=$cmdLine }
-            }
-        } catch {}
-    }
-    if ($minecraftTargets.Count -eq 0) {
-        Write-Host "DENIED: Minecraft is not currently open; live-process scan requires an active Minecraft JVM." -ForegroundColor Red
-        Add-Finding -Tier "Info" -Category "Minecraft Session" -Title "Live Scan Denied" -Message "No active Minecraft Java process was found. Start Minecraft and run the scan again."
-        return
-    }
-    Write-Host "Active Minecraft JVM(s):" -ForegroundColor Cyan
-    foreach ($target in $minecraftTargets) {
-        Write-Host "  PID $($target.PID) | $($target.Process) | Active: $($target.Active)" -ForegroundColor White
-        Add-Finding -Tier "Info" -Category "Minecraft Session" -Title "Active Minecraft Process" `
-            -Message "Minecraft JVM PID $($target.PID) is active." -Evidence @{PID=$target.PID; Process=$target.Process; Active=$target.Active}
-        # Do not treat the complete command line as a filesystem path.
-        if ($target.CommandLine -match '(?i)-gameDir\s+"([^"]+)"') {
-            $gameDir = $Matches[1]
-            if (Test-Path $gameDir -PathType Container) { [void]$roots.Add((Resolve-Path $gameDir).Path) }
-        }
-        foreach ($token in [regex]::Matches($target.CommandLine, '(?i)([A-Za-z]:\\[^" ]*(?:minecraft|\.minecraft|mods|libraries)[^" ]*)')) {
-            $candidate = $token.Groups[1].Value.TrimEnd('"')
-            if (Test-Path $candidate) { [void]$roots.Add((Resolve-Path $candidate).Path) }
-        }
-        try {
-            $targetProcess = Get-Process -Id $target.PID -ErrorAction Stop
-            foreach ($module in ($targetProcess.Modules | Where-Object { $_.FileName })) {
-                if ($module.FileName -match '(?i)(minecraft|fabric|forge|quilt|lwjgl|\.minecraft)') {
-                    [void]$roots.Add((Split-Path $module.FileName -Parent))
+                Add-Finding -Tier "Info" -Category "Minecraft Session" -Title "Active Minecraft Process" `
+                    -Message "Minecraft JVM PID $($p.Id) active." -Evidence @{PID=$p.Id; Process=$p.ProcessName}
+                if ($cmdLine -match '-gameDir\s+"([^"]+)"') {
+                    $gameDir = $Matches[1]
+                    if (Test-Path $gameDir) { [void]$roots.Add((Resolve-Path $gameDir).Path) }
                 }
+                foreach ($token in [regex]::Matches($cmdLine, '(?i)([A-Za-z]:\\[^" ]*(?:minecraft|\.minecraft|mods|libraries)[^" ]*)')) {
+                    $candidate = $token.Groups[1].Value.TrimEnd('"')
+                    if (Test-Path $candidate) { [void]$roots.Add((Resolve-Path $candidate).Path) }
+                }
+                try {
+                    $targetProcess = Get-Process -Id $p.Id -ErrorAction Stop
+                    foreach ($module in ($targetProcess.Modules | Where-Object { $_.FileName })) {
+                        if ($module.FileName -match '(?i)(minecraft|fabric|forge|quilt|lwjgl|\.minecraft)') {
+                            [void]$roots.Add((Split-Path $module.FileName -Parent))
+                        }
+                    }
+                } catch {}
             }
         } catch {}
     }
+
+    # Common locations
     @(
         "$userProfileRoot\AppData\Roaming\.minecraft",
         "$userProfileRoot\AppData\Roaming\.minecraft\logs",
@@ -633,7 +707,6 @@ function Scan-MinecraftUniverse {
         "$userProfileRoot\AppData\Local\Temp"
     ) | ForEach-Object { if (Test-Path $_ -PathType Container) { [void]$roots.Add((Resolve-Path $_).Path) } }
 
-    # Discover actual paths rather than assuming the default .minecraft folder.
     $since = $script:ScanStart
     $textExt = @('.log','.txt','.json','.xml','.cfg','.config','.properties','.dat','.json5','.crash')
     foreach ($root in $roots) {
@@ -674,7 +747,7 @@ function Scan-MinecraftUniverse {
 
 #region Main
 if (-not (Test-Admin)) {
-    Write-Host "WARNING: Not running as Administrator – some checks may fail." -ForegroundColor Red
+    Write-Host "WARNING: Not running as Administrator – some checks (USN Journal, memory) may fail." -ForegroundColor Red
     Read-Host "Press Enter to continue"
 }
 
@@ -731,7 +804,6 @@ do {
         "2" {
             Scan-System
             Scan-AllJavaMemory
-            Scan-MinecraftUniverse
             Read-Host "Press Enter to continue"
         }
         "3" {
@@ -762,6 +834,10 @@ do {
             Read-Host "Press Enter to continue"
         }
         "6" {
+            Download-And-Run-JournalTrace
+            Read-Host "Press Enter to continue"
+        }
+        "7" {
             Write-Host "Exiting." -ForegroundColor Cyan
             exit
         }
