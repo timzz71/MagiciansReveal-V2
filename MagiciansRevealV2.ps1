@@ -39,10 +39,10 @@ if ($MyInvocation.MyCommand.Path -match '\.ps1$') {
 }
 #endregion
 
-#region GUI Application (WPF) – runs only in EXE mode
+#region GUI Application (WPF)
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms
 
-# XAML for the main window (dark theme, fade‑in, hover animations) – no x:Class or inline events
+# XAML without Class directive or inline events – all handlers are added in PowerShell
 $xaml = @'
 <Window
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -146,8 +146,13 @@ $xaml = @'
 '@
 
 # Load XAML
-$xmlReader = New-Object System.Xml.XmlNodeReader ([xml]$xaml)
-$window = [Windows.Markup.XamlReader]::Load($xmlReader)
+try {
+    $xmlReader = New-Object System.Xml.XmlNodeReader ([xml]$xaml)
+    $window = [Windows.Markup.XamlReader]::Load($xmlReader)
+} catch {
+    Write-Error "Failed to load XAML: $_"
+    exit
+}
 
 # Find controls
 $MinecraftDirBox = $window.FindName("MinecraftDirBox")
@@ -186,7 +191,8 @@ $BrowseOutputButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
     }
 })
 
-#region Scan Logic (Zero False Positives)
+#region Scan Logic (Zero False Positives) – The Absolute Best Signature Database
+# All client names from the specification, including rare and legacy
 $cheatClientNames = @(
     "Vape","VapeV4","VapeLite","VapeClient",
     "Meteor","MeteorClient",
@@ -276,6 +282,8 @@ $cheatClientNames = @(
     "Xenon","XenonClient",
     "Asteria","AsteriaClient"
 )
+
+# Cheat‑only package paths (NEVER in legit mods)
 $cheatPackagePaths = @(
     "cc/novoline", "com/alan/clients", "club/maxstats", "wtf/moonlight",
     "me/zeroeightsix/kami", "net/ccbluex", "today/opai", "net/minecraft/injection",
@@ -283,6 +291,8 @@ $cheatPackagePaths = @(
     "com/moonsworth", "dev/krypton", "skid/krypton", "dev/gambleclient",
     "dev/virel", "org/jose4j/jwt", "sixtwo/", "fivefive/"
 )
+
+# Cheat module names (exact strings)
 $cheatModules = @(
     "KillAura","Killaura","killaura",
     "CrystalAura","crystalaura",
@@ -376,6 +386,8 @@ $cheatModules = @(
     "Bypass","bypass",
     "AntiBan","antiban"
 )
+
+# Cheat domains (DNS cache)
 $cheatDomains = @(
     "vape.gg","vapeclient.com","meteorclient.com","liquidbounce.net","wurstclient.net",
     "sigmaclient.com","novoware.cc","gamesense.pw","osirisclient.com","cosmosclient.com",
@@ -387,6 +399,7 @@ $cheatDomains = @(
     "vertexclient.net","prestigeclient.vip","dqrkis.xyz","orchard.gg"
 )
 
+# Fullwidth obfuscated strings (cheat‑only)
 $fullwidthPatterns = @(
     "’╝Ī’ĮĢ’Įö’ĮÅ’╝Ż’ĮÆ’ĮÖ’Įō’Įö’Įü’Įī",
     "’╝Ī’ĮĢ’Įö’ĮÅ’╝Ī’ĮÄ’Įā’Įł’ĮÅ’ĮÆ",
