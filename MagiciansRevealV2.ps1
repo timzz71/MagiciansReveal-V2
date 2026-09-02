@@ -43,7 +43,7 @@ Write-Host ""
 #endregion
 
 #region Helper Functions
-if (-not ('MagiciansReveal.NativeMemory' -as [type])) {
+if (-not ('MagiciansRevealNativeMemory' -as [type])) {
 Add-Type @'
 using System;
 using System.Collections.Generic;
@@ -56,16 +56,25 @@ public static class MagiciansRevealNativeMemory {
   [DllImport("kernel32.dll", SetLastError=true)] static extern bool CloseHandle(IntPtr h);
   [DllImport("kernel32.dll", SetLastError=true)] static extern bool ReadProcessMemory(IntPtr h, IntPtr addr, byte[] buf, int size, out IntPtr read);
   [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr VirtualQueryEx(IntPtr h, IntPtr addr, out MBI mbi, IntPtr len);
-  [StructLayout(LayoutKind.Sequential)] struct MBI { public IntPtr Base; public IntPtr Alloc; public uint Protect; public UIntPtr Size; public uint State; public uint Type; }
+  [StructLayout(LayoutKind.Sequential)] struct MBI {
+    public IntPtr Base;
+    public IntPtr Alloc;
+    public uint AllocationProtect;
+    public UIntPtr RegionSize;
+    public uint State;
+    public uint Protect;
+    public uint Type;
+  }
   const uint VM_READ=0x10, QUERY=0x400, COMMIT=0x1000, GUARD=0x100, NOACCESS=1;
-  static bool Readable(uint p) { p &= 0xff; return p!=NOACCESS && p!=0x01 && p!=0x02 && p!=0x10; }
+  static bool Readable(uint p) { p &= 0xff; return p!=NOACCESS && p!=0; }
   public static string[] Scan(int pid, string[] needles, int maxRegionMB) {
     var found=new HashSet<string>(StringComparer.OrdinalIgnoreCase); var h=OpenProcess(VM_READ|QUERY,false,pid); if(h==IntPtr.Zero)return new string[0];
     try { IntPtr a=IntPtr.Zero; long cap=(long)maxRegionMB*1024*1024;
-      while(true) { MBI m; if(VirtualQueryEx(h,a,out m,(IntPtr)Marshal.SizeOf(typeof(MBI)))==IntPtr.Zero)break; long n=(long)m.Size; if(n<=0)break;
-        if(m.State==COMMIT && (m.Protect&GUARD)==0 && Readable(m.Protect) && n<=cap) {
+      while(true) { MBI m; if(VirtualQueryEx(h,a,out m,(IntPtr)Marshal.SizeOf(typeof(MBI)))==IntPtr.Zero)break; long n=(long)m.RegionSize; if(n<=0)break;
+        if(m.State==COMMIT && (m.Protect&GUARD)==0 && Readable(m.Protect)) {
           int chunk=1024*1024; byte[] b=new byte[chunk]; for(long off=0;off<n;off+=chunk) { int want=(int)Math.Min(chunk,n-off); IntPtr got; if(!ReadProcessMemory(h,IntPtr.Add(m.Base,(int)Math.Min(off,int.MaxValue)),b,want,out got))continue; int count=got.ToInt64()>int.MaxValue?0:(int)got.ToInt64(); if(count==0)continue;
-            string s=Encoding.ASCII.GetString(b,0,count); foreach(string x in needles) if(!String.IsNullOrWhiteSpace(x)&&s.IndexOf(x,StringComparison.OrdinalIgnoreCase)>=0)found.Add(x); }
+            string s=Encoding.ASCII.GetString(b,0,count); string u=Encoding.Unicode.GetString(b,0,count-(count%2));
+            foreach(string x in needles) if(!String.IsNullOrWhiteSpace(x) && (s.IndexOf(x,StringComparison.OrdinalIgnoreCase)>=0 || u.IndexOf(x,StringComparison.OrdinalIgnoreCase)>=0)) found.Add(x); }
         } a=IntPtr.Add(m.Base,(int)Math.Min(n,int.MaxValue)); if(a==IntPtr.Zero)break;
       }
     } finally { CloseHandle(h); } return new List<string>(found).ToArray();
