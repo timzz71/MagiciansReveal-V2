@@ -503,6 +503,41 @@ function Scan-MinecraftUniverse {
     Write-Host "Discovering Minecraft, Java, and launcher locations..." -ForegroundColor Green
     $roots = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $userProfileRoot = $env:USERPROFILE
+    $minecraftTargets = @()
+    foreach ($p in (Get-Process -Name java,javaw -ErrorAction SilentlyContinue)) {
+        try {
+            $ci = Get-CimInstance Win32_Process -Filter "ProcessId = $($p.Id)" -ErrorAction SilentlyContinue
+            $cmdLine = [string]$ci.CommandLine
+            # Java Update and unrelated JVMs are excluded unless Minecraft evidence exists.
+            if ($cmdLine -match '(?i)(minecraft|\.minecraft|fabric|forge|quilt|lwjgl|net\.minecraft|prism|modrinth|multimc)') {
+                $minecraftTargets += [pscustomobject]@{ PID=$p.Id; Process=$p.ProcessName; Active=(-not $p.HasExited); CommandLine=$cmdLine }
+            }
+        } catch {}
+    }
+    if ($minecraftTargets.Count -eq 0) {
+        Write-Host "DENIED: Minecraft is not currently open; live-process scan requires an active Minecraft JVM." -ForegroundColor Red
+        Add-Finding -Tier "Info" -Category "Minecraft Session" -Title "Live Scan Denied" -Message "No active Minecraft Java process was found. Start Minecraft and run the scan again."
+        return
+    }
+    Write-Host "Active Minecraft JVM(s):" -ForegroundColor Cyan
+    foreach ($target in $minecraftTargets) {
+        Write-Host "  PID $($target.PID) | $($target.Process) | Active: $($target.Active)" -ForegroundColor White
+        Add-Finding -Tier "Info" -Category "Minecraft Session" -Title "Active Minecraft Process" `
+            -Message "Minecraft JVM PID $($target.PID) is active." -Evidence @{PID=$target.PID; Process=$target.Process; Active=$target.Active}
+        [void]$roots.Add((Split-Path $target.CommandLine -Parent -ErrorAction SilentlyContinue))
+        foreach ($token in [regex]::Matches($target.CommandLine, '(?i)([A-Za-z]:\\[^" ]*(?:minecraft|\.minecraft|mods|libraries)[^" ]*)')) {
+            $candidate = $token.Groups[1].Value.TrimEnd('"')
+            if (Test-Path $candidate) { [void]$roots.Add((Resolve-Path $candidate).Path) }
+        }
+        try {
+            $targetProcess = Get-Process -Id $target.PID -ErrorAction Stop
+            foreach ($module in ($targetProcess.Modules | Where-Object { $_.FileName })) {
+                if ($module.FileName -match '(?i)(minecraft|fabric|forge|quilt|lwjgl|\.minecraft)') {
+                    [void]$roots.Add((Split-Path $module.FileName -Parent))
+                }
+            }
+        } catch {}
+    }
     @(
         "$userProfileRoot\AppData\Roaming\.minecraft",
         "$userProfileRoot\AppData\Roaming\.minecraft\logs",
