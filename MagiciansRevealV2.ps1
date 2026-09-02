@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    MagiciansReveal v6.0 – Professional Minecraft Cheat Forensic Scanner
+    MagiciansReveal v2.0 – Professional Minecraft Cheat Forensic Scanner
 .DESCRIPTION
     Detects injectable cheats, self-destructing clients, obfuscated mods, and residual artifacts.
     Uses SHA-1 hash verification, 200+ signatures, bypass analysis, obfuscation scoring,
@@ -35,8 +35,7 @@ $Banner = @"
 
 Write-Host $Banner -ForegroundColor DarkYellow
 Write-Host ""
-Write-Host "                Magicians Reveal V6" -ForegroundColor White
-Write-Host "    The Ultimate Cheat Forensic Scanner" -ForegroundColor DarkGray
+Write-Host "                Magicians Reveal V" -ForegroundColor White
 Write-Host ("━" * 76) -ForegroundColor Red
 Write-Host ""
 
