@@ -1,16 +1,16 @@
 <#
 .SYNOPSIS
-    MagiciansRevealV2 – Minecraft Cheat Forensic Scanner (Zero False Positives)
+    MagiciansRevealV2 – Minecraft Cheat Forensic Scanner (Ultimate GUI Edition)
 .DESCRIPTION
-    Self‑contained PowerShell script that compiles to a GUI executable.
-    Detects cheat clients using cheat‑specific signatures that never appear in legitimate mods.
+    Self‑contained PowerShell script with a rich animated WPF GUI.
+    Detects cheat clients using cheat‑specific signatures – zero false positives.
 .AUTHOR
     Tim$erz
 .VERSION
-    2.0.0
+    2.1.0
 #>
 
-#region Auto‑Compile to EXE
+#region Auto‑Compile to EXE (only if running as .ps1)
 if ($MyInvocation.MyCommand.Path -match '\.ps1$') {
     $exePath = $MyInvocation.MyCommand.Path -replace '\.ps1$', '.exe'
     if (-not (Test-Path $exePath)) {
@@ -20,7 +20,7 @@ if ($MyInvocation.MyCommand.Path -match '\.ps1$') {
         }
         Import-Module ps2exe -Force
         ps2exe -InputFile $MyInvocation.MyCommand.Path -OutputFile $exePath `
-               -Title "MagiciansRevealV2" -Version "2.0.0" -Company "Tim`$erz" `
+               -Title "MagiciansRevealV2" -Version "2.1.0" -Company "Tim`$erz" `
                -Description "Minecraft Cheat Scanner" -NoConsole -ErrorAction SilentlyContinue
         if (Test-Path $exePath) {
             Write-Host "EXE created: $exePath" -ForegroundColor Green
@@ -36,99 +36,141 @@ if ($MyInvocation.MyCommand.Path -match '\.ps1$') {
 }
 #endregion
 
-#region GUI (WPF) – NO x:Class, ALL events handled in PowerShell
+#region GUI (WPF) – NO x:Class, FULL animations
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms
 
 $xaml = @'
 <Window
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="MagiciansRevealV2" Height="620" Width="840"
+        Title="MagiciansRevealV2" Height="660" Width="880"
         WindowStartupLocation="CenterScreen"
-        Background="#1E1E1E" ResizeMode="NoResize"
+        Background="#1A1A2E" ResizeMode="NoResize"
         AllowsTransparency="True" WindowStyle="None">
     <Window.Resources>
-        <Storyboard x:Key="FadeIn">
-            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.8"/>
+        <!-- Glow effect -->
+        <DropShadowEffect x:Key="Glow" Color="#6A5ACD" BlurRadius="15" ShadowDepth="0"/>
+        <!-- Gradient brushes -->
+        <LinearGradientBrush x:Key="TitleGrad" StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#6A5ACD" Offset="0"/>
+            <GradientStop Color="#FF6B6B" Offset="0.5"/>
+            <GradientStop Color="#6A5ACD" Offset="1"/>
+        </LinearGradientBrush>
+        <LinearGradientBrush x:Key="ButtonGrad" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#6A5ACD" Offset="0"/>
+            <GradientStop Color="#8B5CF6" Offset="1"/>
+        </LinearGradientBrush>
+        <!-- Animations -->
+        <Storyboard x:Key="FadeIn" RepeatBehavior="Forever" AutoReverse="True">
+            <DoubleAnimation Storyboard.TargetName="TitleText" Storyboard.TargetProperty="Opacity" From="0.7" To="1" Duration="0:0:1.5"/>
         </Storyboard>
-        <Storyboard x:Key="ButtonHover">
-            <ColorAnimation Storyboard.TargetProperty="Background.Color" To="#FF6A5ACD" Duration="0:0:0.2"/>
+        <Storyboard x:Key="PulseGlow">
+            <DoubleAnimation Storyboard.TargetName="ScanButton" Storyboard.TargetProperty="Effect.BlurRadius" From="10" To="25" Duration="0:0:1" AutoReverse="True" RepeatBehavior="Forever"/>
         </Storyboard>
-        <Storyboard x:Key="ButtonLeave">
-            <ColorAnimation Storyboard.TargetProperty="Background.Color" To="#FF3A3A3A" Duration="0:0:0.2"/>
+        <Storyboard x:Key="Marquee">
+            <DoubleAnimation Storyboard.TargetName="MarqueeTransform" Storyboard.TargetProperty="TranslateX" From="200" To="-200" Duration="0:0:6" RepeatBehavior="Forever"/>
+        </Storyboard>
+        <Storyboard x:Key="ResultSlideIn">
+            <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleX" From="0.8" To="1" Duration="0:0:0.3"/>
+            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.3"/>
         </Storyboard>
     </Window.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="40"/>
+            <RowDefinition Height="50"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="50"/>
         </Grid.RowDefinitions>
 
-        <!-- Title Bar -->
-        <Border Grid.Row="0" Background="#2A2A2A">
+        <!-- Title Bar with acrylic effect -->
+        <Border Grid.Row="0" Background="#2A2A3A" CornerRadius="0,0,15,15" Effect="{StaticResource Glow}">
             <Grid>
-                <TextBlock Text="MagiciansRevealV2" FontSize="18" FontWeight="Bold" Foreground="#6A5ACD" VerticalAlignment="Center" Margin="10,0,0,0"/>
-                <Button x:Name="CloseButton" Content="✕" Background="Transparent" BorderThickness="0" Foreground="White" FontSize="16" HorizontalAlignment="Right" Margin="0,0,10,0" Cursor="Hand"/>
+                <TextBlock x:Name="TitleText" Text="✨ MagiciansRevealV2" FontSize="22" FontWeight="Bold" Foreground="{StaticResource TitleGrad}" VerticalAlignment="Center" Margin="15,0,0,0">
+                    <TextBlock.RenderTransform>
+                        <ScaleTransform ScaleX="1" ScaleY="1"/>
+                    </TextBlock.RenderTransform>
+                </TextBlock>
+                <Button x:Name="CloseButton" Content="✕" Background="Transparent" BorderThickness="0" Foreground="White" FontSize="18" HorizontalAlignment="Right" Margin="0,0,15,0" Cursor="Hand"/>
             </Grid>
         </Border>
 
         <!-- Main Content -->
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Background="#1E1E1E">
-            <StackPanel Margin="20">
-                <TextBlock Text="Minecraft Cheat Forensic Scanner" FontSize="24" FontWeight="Bold" Foreground="White" TextAlignment="Center" Margin="0,0,0,10"/>
-                <TextBlock Text="Zero False Positives – Uses cheat‑specific signatures only" Foreground="#AAAAAA" TextAlignment="Center" Margin="0,0,0,20"/>
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Background="#1A1A2E" Padding="0,10,0,0">
+            <StackPanel Margin="25">
+                <TextBlock Text="Minecraft Cheat Forensic Scanner" FontSize="28" FontWeight="Bold" Foreground="White" TextAlignment="Center" Margin="0,0,0,5"/>
+                <TextBlock Text="Zero False Positives – Powered by Cheat‑Only Signatures" FontSize="14" Foreground="#AAAAAA" TextAlignment="Center" Margin="0,0,0,20"/>
 
-                <GroupBox Header="Scan Target" Foreground="White" BorderBrush="#444" Margin="0,0,0,15">
+                <!-- Marquee status -->
+                <Viewbox Height="30" Margin="0,0,0,15">
+                    <Canvas ClipToBounds="True" Width="400" Height="30">
+                        <TextBlock x:Name="MarqueeText" Text="🔍  Advanced Detection Engine  •  Live Memory Analysis  •  USN Journal Parsing  •  JVM Argument Inspection" FontSize="14" Foreground="#6A5ACD" FontWeight="Bold">
+                            <TextBlock.RenderTransform>
+                                <TranslateTransform x:Name="MarqueeTransform" X="200"/>
+                            </TextBlock.RenderTransform>
+                        </TextBlock>
+                    </Canvas>
+                </Viewbox>
+
+                <!-- Scan Directory -->
+                <GroupBox Header="🎯 Scan Target" Foreground="White" BorderBrush="#444" Margin="0,0,0,15" Background="#25253A" CornerRadius="10">
                     <StackPanel Orientation="Horizontal" Margin="10">
                         <TextBlock Text="Minecraft Directory:" Foreground="White" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                        <TextBox x:Name="MinecraftDirBox" Text="$env:APPDATA\.minecraft" Width="300" Foreground="White" Background="#2A2A2A" BorderBrush="#444"/>
-                        <Button x:Name="BrowseMinecraftButton" Content="Browse" Width="80" Margin="10,0,0,0" Background="#3A3A3A" Foreground="White" BorderThickness="0" Cursor="Hand"/>
+                        <TextBox x:Name="MinecraftDirBox" Text="$env:APPDATA\.minecraft" Width="320" Foreground="White" Background="#1E1E30" BorderBrush="#555"/>
+                        <Button x:Name="BrowseMinecraftButton" Content="📂" Width="40" Margin="10,0,0,0" Background="#3A3A4A" Foreground="White" BorderThickness="0" Cursor="Hand" FontSize="16"/>
                     </StackPanel>
                 </GroupBox>
 
-                <GroupBox Header="Report Output" Foreground="White" BorderBrush="#444" Margin="0,0,0,15">
+                <!-- Output Directory -->
+                <GroupBox Header="📁 Report Output" Foreground="White" BorderBrush="#444" Margin="0,0,0,15" Background="#25253A" CornerRadius="10">
                     <StackPanel Orientation="Horizontal" Margin="10">
                         <TextBlock Text="Save Reports To:" Foreground="White" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                        <TextBox x:Name="OutputDirBox" Text="." Width="300" Foreground="White" Background="#2A2A2A" BorderBrush="#444"/>
-                        <Button x:Name="BrowseOutputButton" Content="Browse" Width="80" Margin="10,0,0,0" Background="#3A3A3A" Foreground="White" BorderThickness="0" Cursor="Hand"/>
+                        <TextBox x:Name="OutputDirBox" Text="." Width="320" Foreground="White" Background="#1E1E30" BorderBrush="#555"/>
+                        <Button x:Name="BrowseOutputButton" Content="📂" Width="40" Margin="10,0,0,0" Background="#3A3A4A" Foreground="White" BorderThickness="0" Cursor="Hand" FontSize="16"/>
                     </StackPanel>
                 </GroupBox>
 
+                <!-- Progress -->
                 <StackPanel Margin="0,0,0,15">
-                    <TextBlock x:Name="StatusText" Text="Ready" Foreground="#AAAAAA" FontSize="14"/>
-                    <ProgressBar x:Name="ProgressBar" Height="20" Foreground="#6A5ACD" Background="#333" Margin="0,5,0,0" Value="0" Minimum="0" Maximum="100"/>
+                    <TextBlock x:Name="StatusText" Text="Ready" Foreground="#AAAAAA" FontSize="14" FontWeight="Bold"/>
+                    <ProgressBar x:Name="ProgressBar" Height="22" Foreground="{StaticResource ButtonGrad}" Background="#333" Margin="0,5,0,0" Value="0" Minimum="0" Maximum="100"/>
                 </StackPanel>
 
-                <Button x:Name="ScanButton" Content="🔍  Start Scan" FontSize="18" FontWeight="Bold" Background="#6A5ACD" Foreground="White" BorderThickness="0" Height="50" Cursor="Hand">
+                <!-- Scan Button with glow -->
+                <Button x:Name="ScanButton" Content="🚀  START SCAN" FontSize="20" FontWeight="Bold" Background="{StaticResource ButtonGrad}" Foreground="White" BorderThickness="0" Height="55" Cursor="Hand" Effect="{StaticResource Glow}">
                     <Button.Triggers>
                         <EventTrigger RoutedEvent="Button.MouseEnter">
-                            <BeginStoryboard Storyboard="{StaticResource ButtonHover}"/>
+                            <BeginStoryboard Storyboard="{StaticResource PulseGlow}"/>
                         </EventTrigger>
                         <EventTrigger RoutedEvent="Button.MouseLeave">
-                            <BeginStoryboard Storyboard="{StaticResource ButtonLeave}"/>
+                            <BeginStoryboard>
+                                <DoubleAnimation Storyboard.TargetName="ScanButton" Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
+                            </BeginStoryboard>
                         </EventTrigger>
                     </Button.Triggers>
                 </Button>
 
-                <ListBox x:Name="ResultsList" Margin="0,15,0,0" Height="200" Background="#2A2A2A" Foreground="White" BorderBrush="#444" FontFamily="Consolas" FontSize="12">
+                <!-- Results List with slide‑in animation -->
+                <ListBox x:Name="ResultsList" Margin="0,15,0,0" Height="200" Background="#1E1E30" Foreground="White" BorderBrush="#444" FontFamily="Consolas" FontSize="12">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="{Binding Tier}" Width="80" Foreground="{Binding Color}"/>
-                                <TextBlock Text="{Binding Title}" Width="200" Foreground="White"/>
+                            <StackPanel Orientation="Horizontal" Margin="5">
+                                <TextBlock Text="{Binding Tier}" Width="90" Foreground="{Binding Color}" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding Title}" Width="210" Foreground="White"/>
                                 <TextBlock Text="{Binding Message}" Foreground="#AAAAAA" TextWrapping="Wrap"/>
                             </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="ExportButton" Content="📄  Export Report" FontSize="14" Background="#3A3A3A" Foreground="White" BorderThickness="0" Height="40" Margin="0,10,0,0" Cursor="Hand" IsEnabled="False"/>
+                <!-- Export Button -->
+                <Button x:Name="ExportButton" Content="📄  Export Report" FontSize="15" Background="#3A3A4A" Foreground="White" BorderThickness="0" Height="45" Margin="0,10,0,0" Cursor="Hand" IsEnabled="False"/>
             </StackPanel>
         </ScrollViewer>
 
-        <Border Grid.Row="2" Background="#2A2A2A">
-            <TextBlock Text="© 2026 Tim$erz – For Consented Screenshare Investigations Only" Foreground="#777" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+        <!-- Footer -->
+        <Border Grid.Row="2" Background="#1E1E30" CornerRadius="15,15,0,0">
+            <TextBlock Text="© 2026 Tim$erz – For Consented Screenshare Investigations Only" Foreground="#666" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="12"/>
         </Border>
     </Grid>
 </Window>
@@ -149,6 +191,11 @@ $ExportButton = $window.FindName("ExportButton")
 $CloseButton = $window.FindName("CloseButton")
 $BrowseMinecraftButton = $window.FindName("BrowseMinecraftButton")
 $BrowseOutputButton = $window.FindName("BrowseOutputButton")
+$MarqueeTransform = $window.FindName("MarqueeTransform")
+
+# Start marquee animation
+$marqueeStory = $window.Resources["Marquee"]
+if ($marqueeStory) { $marqueeStory.Begin() }
 
 # Events
 $window.AddHandler([System.Windows.Window]::MouseLeftButtonDownEvent, { $window.DragMove() })
@@ -166,7 +213,7 @@ $BrowseOutputButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
     }
 })
 
-#region Full Signature Database (Zero False Positives)
+#region Full Signature Database (Zero False Positives) – same as before
 $cheatClientNames = @(
     "Vape","VapeV4","VapeLite","VapeClient",
     "Meteor","MeteorClient",
@@ -256,7 +303,6 @@ $cheatClientNames = @(
     "Xenon","XenonClient",
     "Asteria","AsteriaClient"
 )
-
 $cheatPackagePaths = @(
     "cc/novoline", "com/alan/clients", "club/maxstats", "wtf/moonlight",
     "me/zeroeightsix/kami", "net/ccbluex", "today/opai", "net/minecraft/injection",
@@ -264,7 +310,6 @@ $cheatPackagePaths = @(
     "com/moonsworth", "dev/krypton", "skid/krypton", "dev/gambleclient",
     "dev/virel", "org/jose4j/jwt", "sixtwo/", "fivefive/"
 )
-
 $cheatModules = @(
     "KillAura","Killaura","killaura",
     "CrystalAura","crystalaura",
@@ -358,7 +403,6 @@ $cheatModules = @(
     "Bypass","bypass",
     "AntiBan","antiban"
 )
-
 $cheatDomains = @(
     "vape.gg","vapeclient.com","meteorclient.com","liquidbounce.net","wurstclient.net",
     "sigmaclient.com","novoware.cc","gamesense.pw","osirisclient.com","cosmosclient.com",
@@ -369,7 +413,6 @@ $cheatDomains = @(
     "miraiclient.net","ozarkclient.com","raionclient.net","seppukuclient.com",
     "vertexclient.net","prestigeclient.vip","dqrkis.xyz","orchard.gg"
 )
-
 $fullwidthPatterns = @(
     "’╝Ī’ĮĢ’Įö’ĮÅ’╝Ż’ĮÆ’ĮÖ’Įō’Įö’Įü’Įī",
     "’╝Ī’ĮĢ’Įö’ĮÅ’╝Ī’ĮÄ’Įā’Įł’ĮÅ’ĮÆ",
@@ -411,7 +454,7 @@ $fullwidthPatterns = @(
 )
 #endregion
 
-#region Scan Functions
+#region Scan Functions – identical to previous, but with animations added to results
 $findings = @()
 function Add-Finding {
     param($Tier, $Category, $Title, $Message, [hashtable]$Evidence = @{})
@@ -426,7 +469,16 @@ function Add-Finding {
         Color     = $color
     }
     $ResultsList.Dispatcher.Invoke({
-        $ResultsList.Items.Add(@{ Tier = $Tier; Title = $Title; Message = $Message; Color = $color })
+        $item = @{ Tier = $Tier; Title = $Title; Message = $Message; Color = $color }
+        $ResultsList.Items.Add($item)
+        # Trigger slide‑in animation on the new item
+        $container = $ResultsList.ItemContainerGenerator.ContainerFromIndex($ResultsList.Items.Count - 1)
+        if ($container) {
+            $container.RenderTransform = [System.Windows.Media.ScaleTransform]::new(0.8, 1)
+            $container.Opacity = 0
+            $slideIn = $window.Resources["ResultSlideIn"]
+            if ($slideIn) { $container.BeginStoryboard($slideIn) }
+        }
         $ResultsList.ScrollIntoView($ResultsList.Items[$ResultsList.Items.Count - 1])
     })
 }
@@ -629,7 +681,8 @@ $ExportButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
 })
 #endregion
 
-# Start GUI
+# Start GUI with fade‑in
 $fadeIn = $window.Resources["FadeIn"]
 if ($fadeIn) { $window.BeginStoryboard($fadeIn) }
 $window.ShowDialog() | Out-Null
+#endregion
