@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-    MagiciansRevealV2 – Console Forensic Scanner (Zero False Positives)
+    MagiciansRevealV2 – Console Forensic Scanner
 .DESCRIPTION
     Menu-driven PowerShell scanner for Minecraft cheat clients.
-    Uses cheat-specific signatures, fullwidth detection, obfuscation, and runtime analysis.
+    Uses signature matching, fullwidth detection, obfuscation analysis and runtime checks.
 .AUTHOR
-    Magician
+    Tim$erz
 .VERSION
-    3.0.0
+    3.0.1
 #>
 
 #region Initialisation
@@ -69,7 +69,7 @@ function Show-Menu {
 
 function Add-Finding {
     param(
-        [string]$Tier,    # Detection, Warning, Info
+        [string]$Tier,
         [string]$Category,
         [string]$Title,
         [string]$Message,
@@ -113,7 +113,7 @@ function Export-Report {
     $json | Out-File -FilePath $jsonFile -Encoding utf8
     Write-Host "JSON report saved to $jsonFile" -ForegroundColor Green
 
-    $txt = "MagiciansRevealV2 Forensic Report`n" + "="*50 + "`n"
+    $txt = "MagiciansRevealV2 Forensic Report`n" + ("=" * 50) + "`n"
     $txt += "Scan Time: $($report.ScanTime)`n`n"
     foreach ($f in $script:Findings) {
         $txt += "[$($f.Tier)] $($f.Title)`n  $($f.Message)`n"
@@ -125,333 +125,161 @@ function Export-Report {
 #endregion
 
 #region Signature Databases
+# Only ASCII-safe strings – fullwidth detection is handled by regex below
 $suspiciousPatterns = @(
-    "AimAssist", "AnchorTweaks", "AutoAnchor", "AutoCrystal", "AutoDoubleHand", "JDWP.VirtualMachine.AllModules",
+    "AimAssist", "AnchorTweaks", "AutoAnchor", "AutoCrystal", "AutoDoubleHand",
     "AutoHitCrystal", "AutoPot", "AutoTotem", "AutoArmor", "InventoryTotem",
-    "LegitTotem", "PingSpoof", "SelfDestruct",
-    "ShieldBreaker", "TriggerBot", "AxeSpam", "WebMacro",
-    "FastPlace", "WalksyOptimizer", "walsky.optimizer",
-    "WalksyCrystalOptimizerMod", "Donut", "Replace Mod",
-    "ShieldDisabler", "SilentAim", "Totem Hit", "Wtap", "FakeLag", "dev.virel", "orchard",
+    "LegitTotem", "PingSpoof", "SelfDestruct", "ShieldBreaker", "TriggerBot",
+    "AxeSpam", "WebMacro", "FastPlace", "WalksyOptimizer", "walsky.optimizer",
+    "WalksyCrystalOptimizerMod", "Donut", "Replace Mod", "ShieldDisabler",
+    "SilentAim", "Totem Hit", "Wtap", "FakeLag", "dev.virel", "orchard",
     "BlockESP", "dev.krypton", "skid.krypton", "skid/krypton", "AntiMissClick",
     "LagReach", "PopSwitch", "SprintReset", "ChestSteal", "AntiBot",
-    "ElytraSwap", "FastXP", "FastExp", "Refill", "AirAnchor",
-    "jnativehook", "FakeInv", "HoverTotem", "AutoClicker", "AutoFirework",
-    "PackSpoof", "Antiknockback", "catlean",
-    "AuthBypass", "Asteria", "Prestige", "AutoEat", "AutoMine",
-    "MaceSwap", "Macro198", "StunSlam", "SafeAnchor", "DoubleAnchor", "AutoTPA", "BaseFinder", "Xenon", "gypsy",
-    "AutoPotRefill", "KeyPearl", "AutoNethPot", "AutoDtap",
-    "TriggerBot", "AutoWeb", "AnchorAction",
-    "org.chainlibs.module.impl.modules.Crystal.Y",
-    "org.chainlibs.module.impl.modules.Crystal.bF",
-    "org.chainlibs.module.impl.modules.Crystal.bM",
-    "org.chainlibs.module.impl.modules.Crystal.bY",
-    "org.chainlibs.module.impl.modules.Crystal.bq",
-    "org.chainlibs.module.impl.modules.Crystal.cv",
-    "org.chainlibs.module.impl.modules.Crystal.o",
-    "org.chainlibs.module.impl.modules.Blatant.I",
-    "org.chainlibs.module.impl.modules.Blatant.bR",
-    "org.chainlibs.module.impl.modules.Blatant.bx",
-    "org.chainlibs.module.impl.modules.Blatant.cj",
-    "org.chainlibs.module.impl.modules.Blatant.dk",
-    "imgui.gl3", "imgui.glfw",
-    "BowAim", "Criticals", "Fakenick", "FakeItem",
-    "invsee", "ItemExploit", "Hellion", "hellion",
-    "LicenseCheckMixin", "ClientPlayerInteractionManagerAccessor",
-    "ClientPlayerEntityMixim", "dev.gambleclient", "obfuscatedAuth",
-    "phantom-refmap.json", "xyz.greaj",
-    "じ.class", "ふ.class", "ぶ.class", "ぷ.class", "た.class",
-    "ね.class", "そ.class", "な.class", "ど.class", "ぐ.class",
-    "ず.class", "で.class", "つ.class", "べ.class", "せ.class",
-    "と.class", "み.class", "び.class", "す.class", "の.class"
+    "ElytraSwap", "FastXP", "FastExp", "Refill", "AirAnchor", "jnativehook",
+    "FakeInv", "HoverTotem", "AutoClicker", "AutoFirework", "PackSpoof",
+    "Antiknockback", "catlean", "AuthBypass", "Asteria", "Prestige",
+    "AutoEat", "AutoMine", "MaceSwap", "Macro198", "StunSlam", "SafeAnchor",
+    "DoubleAnchor", "AutoTPA", "BaseFinder", "Xenon", "gypsy", "AutoPotRefill",
+    "KeyPearl", "AutoNethPot", "AutoDtap", "AutoWeb", "AnchorAction",
+    "org.chainlibs.module.impl.modules.Crystal", "org.chainlibs.module.impl.modules.Blatant",
+    "imgui.gl3", "imgui.glfw", "BowAim", "Criticals", "Fakenick", "FakeItem",
+    "invsee", "ItemExploit", "Hellion", "hellion", "LicenseCheckMixin",
+    "ClientPlayerInteractionManagerAccessor", "ClientPlayerEntityMixim",
+    "dev.gambleclient", "obfuscatedAuth", "phantom-refmap.json", "xyz.greaj"
 )
 
 $cheatStrings = @(
-    "AutoCrystal", "autocrystal", "auto crystal", "cw crystal", "JDWP.VirtualMachine.AllModules",
+    "AutoCrystal", "autocrystal", "auto crystal", "cw crystal",
     "dontPlaceCrystal", "dontBreakCrystal", "dev.virel", "orchard",
     "AutoHitCrystal", "autohitcrystal", "canPlaceCrystalServer", "healPotSlot",
-    "ＡｕｔｏＣｒｙｓｔａｌ", "Ａｕｔｏ Ｃｒｙｓｔａｌ",
-    "ＡｕｔｏＨｉｔＣｒｙｓｔａｌ",
-    "AutoAnchor", "autoanchor", "auto anchor", "DoubleAnchor",
-    "HasAnchor", "anchortweaks", "anchor macro", "safe anchor", "safeanchor",
-    "SafeAnchor", "AirAnchor",
-    "ＡｕｔｏＡｎｃｈｏｒ", "Ａｕｔｏ Ａｎｃｈｏｒ",
-    "ＤｏｕｂｌｅＡｎｃｈｏｒ", "Ｄｏｕｂｌｅ Ａｎｃｈｏｒ",
-    "ＳａｆｅＡｎｃｈｏｒ", "Ｓａｆｅ Ａｎｃｈｏｒ",
-    "Ａｎｃｈｏｒ Ｍａｃｒｏ", "anchorMacro",
-    "AutoTotem", "autototem", "auto totem", "InventoryTotem",
-    "inventorytotem", "HoverTotem", "hover totem", "legittotem",
-    "ＡｕｔｏＴｏｔｅｍ", "Ａｕｔｏ Ｔｏｔｅｍ",
-    "ＨｏｖｅｒＴｏｔｅｍ", "Ｈｏｖｅｒ Ｔｏｔｅｍ",
-    "ＩｎｖｅｎｔｏｒｙＴｏｔｅｍ", "Ａｕｔｏ Ｉｎｖｅｎｔｏｒｙ Ｔｏｔｅｍ",
-    "Ａｕｔｏ Ｔｏｔｅｍ Ｈｉｔ",
+    "AutoAnchor", "autoanchor", "auto anchor", "DoubleAnchor", "HasAnchor",
+    "anchortweaks", "anchor macro", "safe anchor", "safeanchor", "SafeAnchor",
+    "AirAnchor", "anchorMacro", "AutoTotem", "autototem", "auto totem",
+    "InventoryTotem", "inventorytotem", "HoverTotem", "hover totem", "legittotem",
     "AutoPot", "autopot", "auto pot", "speedPotSlot", "strengthPotSlot",
-    "AutoArmor", "autoarmor", "auto armor",
-    "ＡｕｔｏＰｏｔ", "Ａｕｔｏ Ｐｏｔ",
-    "Ａｕｔｏ Ｐｏｔ Ｒｅｆｉｌｌ", "AutoPotRefill",
-    "ＡｕｔｏＡｒｍｏｒ", "Ａｕｔｏ Ａｒｍｏｒ",
+    "AutoArmor", "autoarmor", "auto armor", "AutoPotRefill",
     "preventSwordBlockBreaking", "preventSwordBlockAttack",
-    "ShieldDisabler", "ShieldBreaker",
-    "ＳｈｉｅｌｄＤｉｓａｂｌｅｒ", "Ｓｈｉｅｌｄ Ｄｉｓａｂｌｅｒ",
-    "Breaking shield with axe...",
-    "AutoDoubleHand", "autodoublehand", "auto double hand",
-    "ＡｕｔｏＤｏｕｂｌｅＨａｎｄ", "Ａｕｔｏ Ｄｏｕｂｌｅ Ｈａｎｄ",
-    "AutoClicker",
-    "ＡｕｔｏＣｌｉｃｋｅｒ",
-    "Failed to switch to mace after axe!",
-    "AutoMace", "MaceSwap", "SpearSwap",
-    "ＡｕｔｏＭａｃｅ", "Ａｕｔｏ Ｍａｃｅ",
-    "ＭａｃｅＳｗａｐ", "Ｍａｃｅ Ｓｗａｐ",
-    "Ｓｐｅａｒ Ｓｗａｐ", "Ａｕｔｏｍａｔｉｃａｌｌｙ ａｘｅ ａｎｄ ｍａｃｅ ｓｈｉｅｌｄｅｄ ｐｌａｙｅｒｓ",
-    "Ｓｔｕｎ Ｓｌａｍ", "StunSlam",
-    "Donut", "JumpReset", "axespam", "axe spam",
+    "ShieldDisabler", "ShieldBreaker", "Breaking shield with axe...",
+    "AutoDoubleHand", "autodoublehand", "auto double hand", "AutoClicker",
+    "Failed to switch to mace after axe!", "AutoMace", "MaceSwap", "SpearSwap",
+    "StunSlam", "Donut", "JumpReset", "axespam", "axe spam",
     "findKnockbackSword", "attackRegisteredThisClick",
-    "AimAssist", "aimassist", "aim assist",
-    "triggerbot", "trigger bot",
-    "ＡｉｍＡｓｓｉｓｔ", "Ａｉｍ Ａｓｓｉｓｔ",
-    "ＴｒｉｇｇｅｒＢｏｔ", "Ｔｒｉｇｇｅｒ Ｂｏｔ",
-    "Silent Rotations", "SilentRotations",
-    "Ｓｉｌｅｎｔ Ｒｏｔａｔｉｏｎｓ",
-    "FakeInv", "swapBackToOriginalSlot",
-    "FakeLag", "pingspoof", "ping spoof",
-    "ＦａｋｅＬａｇ", "Ｆａｋｅ Ｌａｇ",
-    "fakePunch", "Fake Punch",
-    "Ｆａｋｅ Ｐｕｎｃｈ",
-    "mace_swap", "quick_strike", "macro_198", "stun_slam",
-    "safe_anchor", "double_anchor", "auto_pot_refill",
-    "walksy_optimizer", "key_pearl", "aim_assist",
-    "auto_neth_pot", "auto_dtap", "trigger_bot", "auto_web",
+    "AimAssist", "aimassist", "aim assist", "triggerbot", "trigger bot",
+    "Silent Rotations", "SilentRotations", "FakeInv", "swapBackToOriginalSlot",
+    "FakeLag", "pingspoof", "ping spoof", "fakePunch", "Fake Punch",
+    "mace_swap", "quick_strike", "macro_198", "stun_slam", "safe_anchor",
+    "double_anchor", "auto_pot_refill", "walksy_optimizer", "key_pearl",
+    "aim_assist", "auto_neth_pot", "auto_dtap", "trigger_bot", "auto_web",
     "DOUBLE_ESCAPE", "DOUBLE_RIGHTCLICK_FIRST", "DOUBLE_RIGHTCLICK_SECOND",
     "POST_CYCLE_DELAY", "PLACE_OBI", "WAIT_OBI", "PLACE_CRYSTAL", "BREAK_CRYSTAL",
     "ROTATING_DOWN", "ROTATING_BACK", "REFILLING", "PLANTING", "BONEMEALING",
-    "AnchorAction", "Places two anchors for massive damage",
-    "REOFFHAND_TOTEM",
-    "webmacro", "web macro",
-    "AntiWeb", "AutoWeb",
-    "Ａｎｔｉ Ｗｅｂ", "ＡｕｔｏＷｅｂ",
-    "Ｐｌａｃｅｓ Ｗｅｂｓ Ｏｎ Ｅｎｅｍｉｅｓ",
+    "AnchorAction", "Places two anchors for massive damage", "REOFFHAND_TOTEM",
+    "webmacro", "web macro", "AntiWeb", "AutoWeb",
     "lvstrng", "dqrkis", "selfdestruct", "self destruct",
     "WalksyCrystalOptimizerMod", "WalksyOptimizer", "WalskyOptimizer",
-    "Ｗａｌｋｓｙ Ｏｐｔｉｍｉｚｅｒ",
-    "autoCrystalPlaceClock",
-    "AutoFirework", "ElytraSwap", "FastXP", "FastExp", "NoJumpDelay",
-    "ＥｌｙｔｒａＳｗａｐ", "Ｅｌｙｔｒａ Ｓｗａｐ",
-    "PackSpoof", "Antiknockback", "catlean",
-    "AuthBypass", "obfuscatedAuth", "LicenseCheckMixin",
-    "BaseFinder", "invsee", "ItemExploit",
-    "FreezePlayer",
-    "Ｆｒｅｅｃａｍ", "Ｍｏｖｅ ｆｒｅｅｌｙ ｔｈｒｏｕｇｈ ｗａｌｌｓ",
-    "Ｎｏ Ｃｌｉｐ", "Ｆｒｅｅｚｅ Ｐｌａｙｅｒ",
-    "LWFH Crystal", "JDWP.VirtualMachine.AllModules",
-    "ＬＷＦＨ Ｃｒｙｓｔａｌ",
-    "KeyPearl", "LootYeeter",
-    "ＫｅｙＰｅａｒｌ", "Ｋｅｙ Ｐｅａｒｌ",
-    "Ｌｏｏｔ Ｙｅｅｔｅｒ",
-    "FastPlace",
-    "Ｆａｓｔ Ｐｌａｃｅ", "Ｐｌａｃｅ ｂｌｏｃｋｓ ｆａｓｔｅｒ",
-    "AutoBreach",
-    "Ａｕｔｏ Ｂｒｅａｃｈ",
-    "setBlockBreakingCooldown", "getBlockBreakingCooldown", "blockBreakingCooldown",
-    "onBlockBreaking", "setItemUseCooldown",
+    "autoCrystalPlaceClock", "AutoFirework", "ElytraSwap", "FastXP", "FastExp",
+    "NoJumpDelay", "PackSpoof", "Antiknockback", "catlean", "AuthBypass",
+    "obfuscatedAuth", "LicenseCheckMixin", "BaseFinder", "invsee", "ItemExploit",
+    "FreezePlayer", "LWFH Crystal", "KeyPearl", "LootYeeter", "FastPlace",
+    "AutoBreach", "setBlockBreakingCooldown", "getBlockBreakingCooldown",
+    "blockBreakingCooldown", "onBlockBreaking", "setItemUseCooldown",
     "invokeDoAttack", "invokeDoItemUse", "invokeOnMouseButton",
     "onPushOutOfBlocks", "onIsGlowing",
     "Automatically switches to sword when hitting with totem",
-    "arrayOfString", "POT_CHEATS",
-    "Dqrkis Client", "Entity.isGlowing",
-    "Activate Key", "Ａｃｔｉｖａｔｅ Ｋｅｙ",
-    "Click Simulation", "Ｃｌｉｃｋ Ｓｉｍｕｌａｔｉｏｎ",
-    "On RMB", "Ｏｎ ＲＭＢ",
-    "No Count Glitch", "Ｎｏ Ｃｏｕｎｔ Ｇｌｉｔｃｈ",
-    "No Bounce", "NoBounce", "Ｎｏ Ｂｏｕｎｃｅ", "ＮｏＢｏｕｎｃｅ",
-    "Ｒｅｍｏｖｅｓ ｔｈｅ ｃｒｙｓｔａｌ ｂｏｕｎｃｅ ａｎｉｍａｔｉｏｎ",
-    "Place Delay", "Ｐｌａｃｅ Ｄｅｌａｙ",
-    "Break Delay", "Ｂｒｅａｋ Ｄｅｌａｙ",
-    "Ｆａｓｔ Ｍｏｄｅ",
-    "Place Chance", "Ｐｌａｃｅ Ｃｈａｎｃｅ",
-    "Break Chance", "Ｂｒｅａｋ Ｃｈａｎｃｅ",
-    "Stop On Kill", "Ｓｔｏｐ Ｏｎ Ｋｉｌｌ",
-    "Ｄａｍａｇｅ Ｔｉｃｋ", "damagetick",
-    "Anti Weakness", "Ａｎｔｉ Ｗｅａｋｎｅｓｓ",
-    "Particle Chance", "Ｐａｒｔｉｃｌｅ Ｃｈａｎｃｅ",
-    "Trigger Key", "Ｔｒｉｇｇｅｒ Ｋｅｙ",
-    "Switch Delay", "Ｓｗｉｔｃｈ Ｄｅｌａｙ",
-    "Totem Slot", "Ｔｏｔｅｍ Ｓｌｏｔ",
-    "Silent Rotations", "Ｓｉｌｅｎｔ Ｒｏｔａｔｉｏｎｓ",
-    "Smooth Rotations", "Ｓｍｏｏｔｈ Ｒｏｔａｔｉｏｎｓ",
-    "Rotation Speed", "Ｒｏｔａｔｉｏｎ Ｓｐｅｅｄ",
-    "Use Easing", "Ｕｓｅ Ｅａｓｉｎｇ",
-    "Easing Strength", "Ｅａｓｉｎｇ Ｓｔｒｅｎｇｔｈ",
-    "While Use", "Ｗｈｉｌｅ Ｕｓｅ",
-    "Stop on Kill", "Ｓｔｏｐ ｏｎ Ｋｉｌｌ",
-    "Click Simulation", "Ｃｌｉｃｋ Ｓｉｍｕｌａｔｉｏｎ",
-    "Glowstone Delay", "Ｇｌｏｗｓｔｏｎｅ Ｄｅｌａｙ",
-    "Glowstone Chance", "Ｇｌｏｗｓｔｏｎｅ Ｃｈａｎｃｅ",
-    "Explode Delay", "Ｅｘｐｌｏｄｅ Ｄｅｌａｙ",
-    "Explode Chance", "Ｅｘｐｌｏｄｅ Ｃｈａｎｃｅ",
-    "Explode Slot", "Ｅｘｐｌｏｄｅ Ｓｌｏｔ",
-    "Only Charge", "Ｏｎｌｙ Ｃｈａｒｇｅ",
-    "Anchor Macro", "Ａｎｃｈｏｒ Ｍａｃｒｏ",
-    "Reach Distance", "Ｒｅａｃｈ Ｄｉｓｔａｎｃｅ",
-    "Min Height", "Ｍｉｎ Ｈｅｉｇｈｔ",
-    "Min Fall Speed", "Ｍｉｎ Ｆａｌｌ Ｓｐｅｅｄ",
-    "Attack Delay", "Ａｔｔａｃｋ Ｄｅｌａｙ",
-    "Breach Delay", "Ｂｒｅａｃｈ Ｄｅｌａｙ",
-    "Require Elytra", "Ｒｅｑｕｉｒｅ Ｅｌｙｔｒａ",
-    "Auto Switch Back", "Ａｕｔｏ Ｓｗｉｔｃｈ Ｂａｃｋ",
-    "Check Line of Sight", "Ｃｈｅｃｋ Ｌｉｎｅ ｏｆ Ｓｉｇｈｔ",
-    "Only When Falling", "Ｏｎｌｙ Ｗｈｅｎ Ｆａｌｌｉｎｇ",
-    "Require Crit", "Ｒｅｑｕｉｒｅ Ｃｒｉｔ",
-    "Show Status Display", "Ｓｈｏｗ Ｓｔａｔｕｓ Ｄｉｓｐｌａｙ",
-    "Stop On Crystal", "Ｓｔｏｐ Ｏｎ Ｃｒｙｓｔａｌ",
-    "Check Shield", "Ｃｈｅｃｋ Ｓｈｉｅｌｄ",
-    "On Pop", "Ｏｎ Ｐｏｐ",
-    "Predict Damage", "Ｐｒｅｄｉｃｔ Ｄａｍａｇｅ",
-    "On Ground", "Ｏｎ Ｇｒｏｕｎｄ",
-    "Check Players", "Ｃｈｅｃｋ Ｐｌａｙｅｒｓ",
-    "Predict Crystals", "Ｐｒｅｄｉｃｔ Ｃｒｙｓｔａｌｓ",
-    "Check Aim", "Ｃｈｅｃｋ Ａｉｍ",
-    "Check Items", "Ｃｈｅｃｋ Ｉｔｅｍｓ",
-    "Activates Above", "Ａｃｔｉｖａｔｅｓ Ａｂｏｖｅ",
-    "Blatant", "Ｂｌａｔａｎｔ",
-    "Force Totem", "Ｆｏｒｃｅ Ｔｏｔｅｍ",
-    "Stay Open For", "Ｓｔａｙ Ｏｐｅｎ Ｆｏｒ",
-    "Auto Inventory Totem", "Ａｕｔｏ Ｉｎｖｅｎｔｏｒｙ Ｔｏｔｅｍ",
-    "Only On Pop", "Ｏｎｌｙ Ｏｎ Ｐｏｐ",
-    "Vertical Speed", "Ｖｅｒｔｉｃａｌ Ｓｐｅｅｄ",
-    "Hover Totem", "Ｈｏｖｅｒ Ｔｏｔｅｍ",
-    "Swap Speed", "Ｓｗａｐ Ｓｐｅｅｄ",
-    "Strict One-Tick", "Ｓｔｒｉｃｔ Ｏｎｅ－Ｔｉｃｋ",
-    "Mace Priority", "Ｍａｃｅ Ｐｒｉｏｒｉｔｙ",
-    "Min Totems", "Ｍｉｎ Ｔｏｔｅｍｓ",
-    "Min Pearls", "Ｍｉｎ Ｐｅａｒｌｓ",
-    "Totem First", "Ｔｏｔｅｍ Ｆｉｒｓｔ",
-    "Drop Interval", "Ｄｒｏｐ Ｉｎｔｅｒｖａｌ",
-    "Random Pattern", "Ｒａｎｄｏｍ Ｐａｔｔｅｒｎ",
-    "Loot Yeeter", "Ｌｏｏｔ Ｙｅｅｔｅｒ",
-    "Horizontal Aim Speed", "Ｈｏｒｉｚｏｎｔａｌ Ａｉｍ Ｓｐｅｅｄ",
-    "Vertical Aim Speed", "Ｖｅｒｔｉｃａｌ Ａｉｍ Ｓｐｅｅｄ",
-    "Include Head", "Ｉｎｃｌｕｄｅ Ｈｅａｄ",
-    "Web Delay", "Ｗｅｂ Ｄｅｌａｙ",
-    "Holding Web", "Ｈｏｌｄｉｎｇ Ｗｅｂ",
-    "Not When Affects Player", "Ｎｏｔ Ｗｈｅｎ Ａｆｆｅｃｔｓ Ｐｌａｙｅｒ",
-    "Hit Delay", "Ｈｉｔ Ｄｅｌａｙ",
-    "Ｓｗｉｔｃｈ Ｂａｃｋ",
-    "Require Hold Axe", "Ｒｅｑｕｉｒｅ Ｈｏｌｄ Ａｘｅ",
-    "Fake Punch", "Ｆａｋｅ Ｐｕｎｃｈ",
-    "placeInterval", "breakInterval", "stopOnKill",
+    "arrayOfString", "POT_CHEATS", "Dqrkis Client", "Entity.isGlowing",
+    "Activate Key", "Click Simulation", "On RMB", "No Count Glitch",
+    "No Bounce", "NoBounce", "Place Delay", "Break Delay", "Fast Mode",
+    "Place Chance", "Break Chance", "Stop On Kill", "Damage Tick", "damagetick",
+    "Anti Weakness", "Particle Chance", "Trigger Key", "Switch Delay",
+    "Totem Slot", "Silent Rotations", "Smooth Rotations", "Rotation Speed",
+    "Use Easing", "Easing Strength", "While Use", "Stop on Kill",
+    "Glowstone Delay", "Glowstone Chance", "Explode Delay", "Explode Chance",
+    "Explode Slot", "Only Charge", "Anchor Macro", "Reach Distance",
+    "Min Height", "Min Fall Speed", "Attack Delay", "Breach Delay",
+    "Require Elytra", "Auto Switch Back", "Check Line of Sight",
+    "Only When Falling", "Require Crit", "Show Status Display",
+    "Stop On Crystal", "Check Shield", "On Pop", "Predict Damage",
+    "On Ground", "Check Players", "Predict Crystals", "Check Aim",
+    "Check Items", "Activates Above", "Blatant", "Force Totem",
+    "Stay Open For", "Auto Inventory Totem", "Only On Pop", "Vertical Speed",
+    "Hover Totem", "Swap Speed", "Strict One-Tick", "Mace Priority",
+    "Min Totems", "Min Pearls", "Totem First", "Drop Interval",
+    "Random Pattern", "Loot Yeeter", "Horizontal Aim Speed",
+    "Vertical Aim Speed", "Include Head", "Web Delay", "Holding Web",
+    "Not When Affects Player", "Hit Delay", "Require Hold Axe",
+    "Fake Punch", "placeInterval", "breakInterval", "stopOnKill",
     "activateOnRightClick", "holdCrystal",
-    "ｐｌａｃｅＩｎｔｅｒｖａｌ", "ｂｒｅａｋＩｎｔｅｒｖａｌ",
-    "ｓｔｏｐＯｎＫｉｌｌ", "ａｃｔｉｖａｔｅOｎＲｉｇｈｔＣｌｉｃｋ",
-    "ｄａｍａｇｅｔｉｃｋ", "ｈｏｌｄＣｒｙｓｔａｌ",
-    "ｆａｋｅＰｕｎｃｈ",
-    "Ｒｅｆｉｌｌｓ ｙｏｕｒ ｈｏｔｂａｒ ｗｉｔｈ ｐｏｔｉｏｎｓ",
-    "Ｋｅｐｓ ｙｏｕ ｓｐｒｉｎｔｉｎｇ ａｔ ａｌｌ ｔｉｍｅｓ",
-    "Ｐｌａｃｅｓ ａｎｃｈｏｒ， ｃｈａｒｇｅｓ ｉｔ， ｐｒｏｔｅｃｔｓ ｙｏｕ， ａｎｄ ｅｘｐｌｏｄｅｓ",
-    "Ａｕｔｏ ｓｗａｐ ｔｏ ｓｐｅａｒ ｏｎ ａｔｔａｃｋ",
-    "Macro Key", "Ａｕｔｏ Ｐｏｔ", "Ｍａｃｒｏ Ｋｅｙ",
     "KillAura", "ClickAura", "MultiAura", "ForceField", "LegitAura",
-    "AimBot", "AutoAim", "SilentAim", "AimLock", "HeadSnap",
-    "CrystalAura",
-    "AnchorAura", "AnchorFill", "AnchorPlace",
-    "BedAura", "AutoBed", "BedBomb", "BedPlace",
-    "BowAimbot", "BowSpam", "AutoBow",
+    "AimBot", "AutoAim", "SilentAim", "AimLock", "HeadSnap", "CrystalAura",
+    "AnchorAura", "AnchorFill", "AnchorPlace", "BedAura", "AutoBed",
+    "BedBomb", "BedPlace", "BowAimbot", "BowSpam", "AutoBow",
     "AutoCrit", "CritBypass", "AlwaysCrit", "CriticalHit",
     "ReachHack", "ExtendReach", "LongReach", "HitboxExpand",
-    "AntiKB", "NoKnockback", "GrimVelocity", "GrimDisabler", "VelocitySpoof", "KBReduce",
-    "OffhandTotem", "TotemSwitch",
-    "AutoWeapon", "AutoSword", "AutoCity", "Burrow", "SelfTrap",
-    "HoleFiller", "AntiSurround", "AntiBurrow",
-    "WTap", "TargetStrafe", "AutoGap", "AutoPearl",
+    "AntiKB", "NoKnockback", "GrimVelocity", "GrimDisabler", "VelocitySpoof",
+    "KBReduce", "OffhandTotem", "TotemSwitch", "AutoWeapon", "AutoSword",
+    "AutoCity", "Burrow", "SelfTrap", "HoleFiller", "AntiSurround",
+    "AntiBurrow", "WTap", "TargetStrafe", "AutoGap", "AutoPearl",
     "FlyHack", "CreativeFlight", "BoatFly", "PacketFly", "AirJump",
-    "SpeedHack", "BHop", "BunnyHop",
-    "AntiFall", "NoFallDamage", "SafeFall",
-    "StepHack", "FastClimb", "AutoStep", "HighStep",
-    "WaterWalk", "LiquidWalk", "LavaWalk",
-    "NoSlow", "NoSlowdown", "NoWeb", "NoSoulSand",
-    "WallHack",
-    "ElytraSpeed", "InstantElytra",
-    "ScaffoldWalk", "FastBridge", "BuildHelper", "AutoBridge",
-    "Nuker", "NukerLegit", "InstantBreak",
-    "GhostHand", "NoSwing",
-    "PlaceAssist", "AirPlace", "AutoPlace", "InstantPlace",
-    "PlayerESP", "MobESP", "ItemESP", "StorageESP", "ChestESP",
-    "Tracers", "NameTagsHack",
-    "XRayHack", "OreFinder", "CaveFinder", "OreESP",
-    "NewChunks", "ChunkBorders", "TunnelFinder",
-    "TargetHUD", "ReachDisplay",
-    "DoubleClicker", "JitterClick", "ButterflyClick", "CPSBoost",
-    "ChestStealer", "InvManager", "InvMovebypass",
-    "AutoSprint", "AntiAFK", "AutoRespawn",
-    "PopSwitch",
+    "SpeedHack", "BHop", "BunnyHop", "AntiFall", "NoFallDamage", "SafeFall",
+    "StepHack", "FastClimb", "AutoStep", "HighStep", "WaterWalk",
+    "LiquidWalk", "LavaWalk", "NoSlow", "NoSlowdown", "NoWeb", "NoSoulSand",
+    "WallHack", "ElytraSpeed", "InstantElytra", "ScaffoldWalk", "FastBridge",
+    "BuildHelper", "AutoBridge", "Nuker", "NukerLegit", "InstantBreak",
+    "GhostHand", "NoSwing", "PlaceAssist", "AirPlace", "AutoPlace",
+    "InstantPlace", "PlayerESP", "MobESP", "ItemESP", "StorageESP",
+    "ChestESP", "Tracers", "NameTagsHack", "XRayHack", "OreFinder",
+    "CaveFinder", "OreESP", "NewChunks", "ChunkBorders", "TunnelFinder",
+    "TargetHUD", "ReachDisplay", "DoubleClicker", "JitterClick",
+    "ButterflyClick", "CPSBoost", "ChestStealer", "InvManager",
+    "InvMovebypass", "AutoSprint", "AntiAFK", "AutoRespawn", "PopSwitch",
     "FakeLatency", "FakePing", "SpoofRotation", "PositionSpoof",
-    "GameSpeed", "SpeedTimer",
-    "GrimBypass", "VulcanBypass", "MatrixBypass",
+    "GameSpeed", "SpeedTimer", "GrimBypass", "VulcanBypass", "MatrixBypass",
     "AACBypass", "VerusDisabler", "IntaveBypass", "WatchdogBypass",
-    "PacketMine", "PacketWalk", "PacketSneak", "PacketCancel", "PacketDupe", "PacketSpam",
-    "SelfDestruct", "HideClient",
-    "SessionStealer", "TokenLogger", "TokenGrabber", "DiscordToken",
-    "RemoteAccess", "ReverseShell", "C2Server", "Backdoor", "KeyLogger",
-    "StashFinder", "TrailFinder",
-    "imgui.binding",
-    "JNativeHook", "GlobalScreen", "NativeKeyListener",
-    "client-refmap.json", "cheat-refmap.json",
-    "aHR0cDovL2FwaS5ub3ZhY2xpZW50LmxvbC93ZWJob29rLnR4dA==",
-    "meteordevelopment", "cc/novoline",
-    "com/alan/clients", "club/maxstats", "wtf/moonlight",
-    "me/zeroeightsix/kami", "net/ccbluex", "today/opai",
+    "PacketMine", "PacketWalk", "PacketSneak", "PacketCancel", "PacketDupe",
+    "PacketSpam", "SelfDestruct", "HideClient", "SessionStealer",
+    "TokenLogger", "TokenGrabber", "DiscordToken", "RemoteAccess",
+    "ReverseShell", "C2Server", "Backdoor", "KeyLogger", "StashFinder",
+    "TrailFinder", "imgui.binding", "JNativeHook", "GlobalScreen",
+    "NativeKeyListener", "client-refmap.json", "cheat-refmap.json",
+    "meteordevelopment", "cc/novoline", "com/alan/clients", "club/maxstats",
+    "wtf/moonlight", "me/zeroeightsix/kami", "net/ccbluex", "today/opai",
     "net/minecraft/injection", "org/chainlibs/module/impl/modules",
-    "xyz/greaj", "com/cheatbreaker", "com/moonsworth",
-    "doomsdayclient", "DoomsdayClient", "doomsday.jar",
-    "novaclient", "api.novaclient.lol",
-    "WalksyOptimizer", "LWFH Crystal",
-    "vape.gg", "vapeclient", "VapeClient", "VapeLite",
-    "intent.store", "IntentClient",
-    "rise.today", "riseclient.com",
+    "xyz/greaj", "com/cheatbreaker", "com/moonsworth", "doomsdayclient",
+    "DoomsdayClient", "doomsday.jar", "novaclient", "api.novaclient.lol",
+    "WalksyOptimizer", "LWFH Crystal", "vape.gg", "vapeclient", "VapeClient",
+    "VapeLite", "intent.store", "IntentClient", "rise.today", "riseclient.com",
     "meteor-client", "meteorclient", "meteordevelopment.meteorclient",
-    "liquidbounce", "fdp-client", "net.ccbluex",
-    "novoware", "novoclient",
-    "aristois", "impactclient", "azura",
-    "pandaware", "skilled", "moonClient", "astolfo",
+    "liquidbounce", "fdp-client", "novoware", "novoclient", "aristois",
+    "impactclient", "azura", "pandaware", "skilled", "moonClient", "astolfo",
     "futureClient", "konas", "rusherhack", "inertia", "exhibition",
     "dev.krypton", "dev/krypton", "skid.krypton", "skid/krypton",
-    "VirginClient", "virgin client",
-    "catlean", "CatleanClient", "catlean client",
-    "ArgonClient", "argon client",
-    "Asteria", "AsteriaClient", "asteria client",
-    "Prestige", "PrestigeClient", "prestige client", "prestigeclient.vip",
-    "gypsy", "GypsyClient", "gypsy client",
-    "Xenon", "XenonClient", "xenon client",
-    "GrimClient", "grim client",
-    "phantom-refmap.json",
-    "dqrkis.xyz", "Dqrkis Client"
+    "VirginClient", "virgin client", "catlean", "CatleanClient",
+    "catlean client", "ArgonClient", "argon client", "Asteria",
+    "AsteriaClient", "asteria client", "Prestige", "PrestigeClient",
+    "prestige client", "prestigeclient.vip", "gypsy", "GypsyClient",
+    "gypsy client", "Xenon", "XenonClient", "xenon client", "GrimClient",
+    "grim client", "phantom-refmap.json", "dqrkis.xyz", "Dqrkis Client"
 )
 
 $patternRegex = [regex]::new(
     '(?<![A-Za-z])(' + ($suspiciousPatterns -join '|') + ')(?![A-Za-z])',
     [System.Text.RegularExpressions.RegexOptions]::Compiled
 )
-$cheatStringSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+
+$cheatStringSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 foreach ($s in $cheatStrings) { [void]$cheatStringSet.Add($s) }
 
+# Detect any sequence of fullwidth alphanumeric characters (used by many obfuscated clients)
 $fullwidthRegex = [regex]::new(
-    "[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]{2,}",
+    "[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]{3,}",
     [System.Text.RegularExpressions.RegexOptions]::Compiled
 )
 #endregion
 
-#region JAR Analysis Functions
-function Get-FileContentAsString {
-    param([string]$Path)
-    try {
-        $bytes = [System.IO.File]::ReadAllBytes($Path)
-        $text = [System.Text.Encoding]::UTF8.GetString($bytes)
-        if ($text -match "\0") { $text = [System.Text.Encoding]::Unicode.GetString($bytes) }
-        return $text
-    } catch { return $null }
-}
-
+#region JAR Analysis
 function Scan-JAR {
     param([string]$FilePath)
+
     $foundPatterns  = [System.Collections.Generic.HashSet[string]]::new()
     $foundStrings   = [System.Collections.Generic.HashSet[string]]::new()
     $foundFullwidth = [System.Collections.Generic.HashSet[string]]::new()
@@ -459,25 +287,35 @@ function Scan-JAR {
     Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
     try {
         $archive = [System.IO.Compression.ZipFile]::OpenRead($FilePath)
-        $allEntries = @($archive.Entries)
-        foreach ($entry in $allEntries) {
+        foreach ($entry in $archive.Entries) {
             $name = $entry.FullName
+
             foreach ($m in $patternRegex.Matches($name)) {
                 [void]$foundPatterns.Add($m.Value)
             }
+
             if ($name -match '\.(class|json)$' -or $name -match 'MANIFEST\.MF') {
                 try {
                     $stream = $entry.Open()
                     $ms = New-Object System.IO.MemoryStream
-                    $stream.CopyTo($ms); $stream.Close()
-                    $bytes = $ms.ToArray(); $ms.Dispose()
+                    $stream.CopyTo($ms)
+                    $stream.Close()
+                    $bytes = $ms.ToArray()
+                    $ms.Dispose()
+
                     $ascii = [System.Text.Encoding]::ASCII.GetString($bytes)
                     $utf8  = [System.Text.Encoding]::UTF8.GetString($bytes)
-                    foreach ($m in $patternRegex.Matches($ascii)) { [void]$foundPatterns.Add($m.Value) }
-                    foreach ($s in $cheatStringSet) {
-                        if ($ascii.Contains($s)) { [void]$foundStrings.Add($s); continue }
-                        if ($utf8.Contains($s))  { [void]$foundStrings.Add($s) }
+
+                    foreach ($m in $patternRegex.Matches($ascii)) {
+                        [void]$foundPatterns.Add($m.Value)
                     }
+
+                    foreach ($s in $cheatStringSet) {
+                        if ($ascii.Contains($s) -or $utf8.Contains($s)) {
+                            [void]$foundStrings.Add($s)
+                        }
+                    }
+
                     foreach ($m in $fullwidthRegex.Matches($utf8)) {
                         [void]$foundFullwidth.Add($m.Value)
                     }
@@ -485,84 +323,79 @@ function Scan-JAR {
             }
         }
         $archive.Dispose()
-    } catch { return $null }
+    } catch {
+        return $null
+    }
 
-    # Resolve fullwidth to known cheat strings
-    $fwCheatPool = $cheatStrings | Where-Object { $_ -cmatch "[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]" }
-    $resolvedFullwidth = [System.Collections.Generic.HashSet[string]]::new()
-    foreach ($fw in @($foundFullwidth)) {
-        if ($fw.Length -lt 3) { continue }
-        $bestMatch = $null
-        foreach ($cs in $fwCheatPool) {
-            if ($cs.Contains($fw)) {
-                if ($null -eq $bestMatch -or $cs.Length -lt $bestMatch.Length) { $bestMatch = $cs }
-            }
-        }
-        if ($bestMatch) { [void]$resolvedFullwidth.Add($bestMatch) }
-        elseif ($fw.Length -ge 6) { [void]$resolvedFullwidth.Add($fw) }
+    return @{
+        Patterns  = $foundPatterns
+        Strings   = $foundStrings
+        Fullwidth = $foundFullwidth
     }
-    $finalFullwidth = [System.Collections.Generic.HashSet[string]]::new()
-    foreach ($fw in @($resolvedFullwidth)) {
-        $isRedundant = $false
-        foreach ($other in @($resolvedFullwidth)) {
-            if ($fw.Length -lt $other.Length -and $other.Contains($fw)) { $isRedundant = $true; break }
-        }
-        if (-not $isRedundant) { [void]$finalFullwidth.Add($fw) }
-    }
-    return @{ Patterns = $foundPatterns; Strings = $foundStrings; Fullwidth = $finalFullwidth }
 }
 #endregion
 
-#region System Scan Modules
+#region System Scan
 function Scan-System {
     Write-Host "Scanning system (processes, registry, DNS, JVM)..." -ForegroundColor Green
-    # Processes
+
     $procs = Get-Process -ErrorAction SilentlyContinue
     foreach ($p in $procs) {
         $name = $p.ProcessName.ToLower()
         foreach ($client in $cheatStrings) {
-            if ($name -match $client.ToLower()) {
-                Add-Finding -Tier "Detection" -Category "Processes" -Title "Cheat Process Running" -Message "Process $($p.ProcessName) matches '$client'" -Evidence @{Process=$p.ProcessName; Client=$client}
+            if ($name -match [regex]::Escape($client.ToLower())) {
+                Add-Finding -Tier "Detection" -Category "Processes" -Title "Cheat Process Running" `
+                    -Message "Process $($p.ProcessName) matches '$client'" `
+                    -Evidence @{Process=$p.ProcessName; Client=$client}
                 break
             }
         }
+
         if ($p.ProcessName -match "javaw|java") {
             try {
                 $cmd = (Get-CimInstance -ClassName Win32_Process -Filter "ProcessId = $($p.Id)" -ErrorAction SilentlyContinue).CommandLine
                 if ($cmd) {
                     if ($cmd -match "-Dclient\.brand=(Wurst|Impact|Meteor|Sigma|LiquidBounce|Vape|Novoline)") {
-                        Add-Finding -Tier "Detection" -Category "JVM" -Title "Malicious JVM Argument" -Message "JVM brand: $($Matches[0])" -Evidence @{Argument=$Matches[0]}
+                        Add-Finding -Tier "Detection" -Category "JVM" -Title "Malicious JVM Argument" `
+                            -Message "JVM brand: $($Matches[0])" -Evidence @{Argument=$Matches[0]}
                     }
                     if ($cmd -match "-D(xray|fly|speed|killaura|reach|scaffold|autocrystal|autototem)") {
-                        Add-Finding -Tier "Detection" -Category "JVM" -Title "JVM Cheat Flag" -Message "Flag: $($Matches[0])" -Evidence @{Argument=$Matches[0]}
+                        Add-Finding -Tier "Detection" -Category "JVM" -Title "JVM Cheat Flag" `
+                            -Message "Flag: $($Matches[0])" -Evidence @{Argument=$Matches[0]}
                     }
-                    # Agents
+
                     $agentMatches = [regex]::Matches($cmd, '-javaagent:([^\s"]+)')
                     $legitAgents = @("jmxremote","yjp","jrebel","newrelic","jacoco","theseus")
                     foreach ($am in $agentMatches) {
                         $agentPath = $am.Groups[1].Value.Trim('"').Trim("'")
                         $agentName = [System.IO.Path]::GetFileName($agentPath)
                         $isLegit = $false
-                        foreach ($la in $legitAgents) { if ($agentName -match $la) { $isLegit = $true; break } }
+                        foreach ($la in $legitAgents) {
+                            if ($agentName -match $la) { $isLegit = $true; break }
+                        }
                         if (-not $isLegit) {
-                            Add-Finding -Tier "Warning" -Category "JVM" -Title "Suspicious Java Agent" -Message "Agent: $agentName (path: $agentPath)" -Evidence @{Agent=$agentName; Path=$agentPath}
+                            Add-Finding -Tier "Warning" -Category "JVM" -Title "Suspicious Java Agent" `
+                                -Message "Agent: $agentName (path: $agentPath)" `
+                                -Evidence @{Agent=$agentName; Path=$agentPath}
                         }
                     }
                     if ($cmd -match '-Xbootclasspath') {
-                        Add-Finding -Tier "Warning" -Category "JVM" -Title "Bootclasspath Modification" -Message "Xbootclasspath flag detected" -Evidence @{Flag=$Matches[0]}
+                        Add-Finding -Tier "Warning" -Category "JVM" -Title "Bootclasspath Modification" `
+                            -Message "Xbootclasspath flag detected" -Evidence @{Flag=$Matches[0]}
                     }
                 }
             } catch {}
         }
     }
-    # Registry
+
     foreach ($client in $cheatStrings) {
         $path = "HKCU:\Software\$client"
         if (Test-Path $path) {
-            Add-Finding -Tier "Detection" -Category "Registry" -Title "Cheat Registry Key" -Message "Key $path exists" -Evidence @{Key=$path}
+            Add-Finding -Tier "Detection" -Category "Registry" -Title "Cheat Registry Key" `
+                -Message "Key $path exists" -Evidence @{Key=$path}
         }
     }
-    # DNS cache
+
     $dns = ipconfig /displaydns 2>$null | Select-String "Record Name.*:\s+(.*)" | ForEach-Object { $_.Matches.Groups[1].Value }
     $cheatDomains = @(
         "vape.gg","vapeclient.com","meteorclient.com","liquidbounce.net","wurstclient.net",
@@ -576,34 +409,39 @@ function Scan-System {
     )
     foreach ($domain in $cheatDomains) {
         if ($dns -match $domain) {
-            Add-Finding -Tier "Detection" -Category "DNS" -Title "Cheat Domain in Cache" -Message "Domain $domain resolved" -Evidence @{Domain=$domain}
+            Add-Finding -Tier "Detection" -Category "DNS" -Title "Cheat Domain in Cache" `
+                -Message "Domain $domain resolved" -Evidence @{Domain=$domain}
         }
     }
-    # Prefetch
+
     $prefetchDir = "$env:windir\Prefetch"
     if (-not (Test-Path $prefetchDir)) {
-        Add-Finding -Tier "Detection" -Category "Prefetch" -Title "Prefetch Folder Missing" -Message "Prefetch folder not present"
+        Add-Finding -Tier "Detection" -Category "Prefetch" -Title "Prefetch Folder Missing" `
+            -Message "Prefetch folder not present"
     } else {
         $files = Get-ChildItem $prefetchDir -ErrorAction SilentlyContinue
         if ($files.Count -lt 5) {
-            Add-Finding -Tier "Warning" -Category "Prefetch" -Title "Low Prefetch Count" -Message "Only $($files.Count) prefetch files – possible deletion"
+            Add-Finding -Tier "Warning" -Category "Prefetch" -Title "Low Prefetch Count" `
+                -Message "Only $($files.Count) prefetch files – possible deletion"
         }
     }
-    # Event logs
+
     $logs = @("Application", "System", "Security", "Windows PowerShell")
     foreach ($log in $logs) {
         try {
             $events = Get-WinEvent -LogName $log -MaxEvents 1 -ErrorAction SilentlyContinue
             if (-not $events) {
-                Add-Finding -Tier "Warning" -Category "Event Logs" -Title "Event Log Cleared" -Message "Event log $log appears empty (cleared?)" -Evidence @{Log=$log}
+                Add-Finding -Tier "Warning" -Category "Event Logs" -Title "Event Log Cleared" `
+                    -Message "Event log $log appears empty (cleared?)" -Evidence @{Log=$log}
             }
         } catch {}
     }
+
     Write-Host "System scan complete." -ForegroundColor Green
 }
 #endregion
 
-#region Main Menu Loop
+#region Main
 if (-not (Test-Admin)) {
     Write-Host "WARNING: Not running as Administrator – some checks may fail." -ForegroundColor Red
     Read-Host "Press Enter to continue"
@@ -632,19 +470,22 @@ do {
                     $i = 0
                     foreach ($jar in $jars) {
                         $i++
-                        Write-Progress -Activity "Scanning JARs" -Status "$($jar.Name)" -PercentComplete (($i / $total) * 100)
+                        Write-Progress -Activity "Scanning JARs" -Status $jar.Name -PercentComplete (($i / $total) * 100)
                         $result = Scan-JAR -FilePath $jar.FullName
                         if ($result) {
                             $hasHit = ($result.Patterns.Count -gt 0) -or ($result.Strings.Count -gt 0) -or ($result.Fullwidth.Count -gt 0)
                             if ($hasHit) {
                                 foreach ($p in $result.Patterns) {
-                                    Add-Finding -Tier "Detection" -Category "File System" -Title "Pattern Match" -Message "Pattern '$p' in $($jar.Name)" -Evidence @{File=$jar.Name; Pattern=$p}
+                                    Add-Finding -Tier "Detection" -Category "File System" -Title "Pattern Match" `
+                                        -Message "Pattern '$p' in $($jar.Name)" -Evidence @{File=$jar.Name; Pattern=$p}
                                 }
                                 foreach ($s in $result.Strings) {
-                                    Add-Finding -Tier "Warning" -Category "File System" -Title "String Match" -Message "String '$s' in $($jar.Name)" -Evidence @{File=$jar.Name; String=$s}
+                                    Add-Finding -Tier "Warning" -Category "File System" -Title "String Match" `
+                                        -Message "String '$s' in $($jar.Name)" -Evidence @{File=$jar.Name; String=$s}
                                 }
                                 foreach ($fw in $result.Fullwidth) {
-                                    Add-Finding -Tier "Detection" -Category "File System" -Title "Fullwidth Obfuscation" -Message "Fullwidth '$fw' in $($jar.Name)" -Evidence @{File=$jar.Name; Fullwidth=$fw}
+                                    Add-Finding -Tier "Detection" -Category "File System" -Title "Fullwidth Obfuscation" `
+                                        -Message "Fullwidth sequence '$fw' in $($jar.Name)" -Evidence @{File=$jar.Name; Fullwidth=$fw}
                                 }
                             }
                         }
