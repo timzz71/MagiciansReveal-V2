@@ -43,6 +43,50 @@ Write-Host ""
 #endregion
 
 #region Helper Functions
+if (-not ('MagiciansReveal.NativeMemory' -as [type])) {
+Add-Type @'
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class MagiciansRevealNativeMemory {
+  [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool CloseHandle(IntPtr h);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool ReadProcessMemory(IntPtr h, IntPtr addr, byte[] buf, int size, out IntPtr read);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr VirtualQueryEx(IntPtr h, IntPtr addr, out MBI mbi, IntPtr len);
+  [StructLayout(LayoutKind.Sequential)] struct MBI { public IntPtr Base; public IntPtr Alloc; public uint Protect; public UIntPtr Size; public uint State; public uint Type; }
+  const uint VM_READ=0x10, QUERY=0x400, COMMIT=0x1000, GUARD=0x100, NOACCESS=1;
+  static bool Readable(uint p) { p &= 0xff; return p!=NOACCESS && p!=0x01 && p!=0x02 && p!=0x10; }
+  public static string[] Scan(int pid, string[] needles, int maxRegionMB) {
+    var found=new HashSet<string>(StringComparer.OrdinalIgnoreCase); var h=OpenProcess(VM_READ|QUERY,false,pid); if(h==IntPtr.Zero)return new string[0];
+    try { IntPtr a=IntPtr.Zero; long cap=(long)maxRegionMB*1024*1024;
+      while(true) { MBI m; if(VirtualQueryEx(h,a,out m,(IntPtr)Marshal.SizeOf(typeof(MBI)))==IntPtr.Zero)break; long n=(long)m.Size; if(n<=0)break;
+        if(m.State==COMMIT && (m.Protect&GUARD)==0 && Readable(m.Protect) && n<=cap) {
+          int chunk=1024*1024; byte[] b=new byte[chunk]; for(long off=0;off<n;off+=chunk) { int want=(int)Math.Min(chunk,n-off); IntPtr got; if(!ReadProcessMemory(h,IntPtr.Add(m.Base,(int)Math.Min(off,int.MaxValue)),b,want,out got))continue; int count=got.ToInt64()>int.MaxValue?0:(int)got.ToInt64(); if(count==0)continue;
+            string s=Encoding.ASCII.GetString(b,0,count); foreach(string x in needles) if(!String.IsNullOrWhiteSpace(x)&&s.IndexOf(x,StringComparison.OrdinalIgnoreCase)>=0)found.Add(x); }
+        } a=IntPtr.Add(m.Base,(int)Math.Min(n,int.MaxValue)); if(a==IntPtr.Zero)break;
+      }
+    } finally { CloseHandle(h); } return new List<string>(found).ToArray();
+  }
+}
+'@
+}
+
+function Scan-JavaMemory {
+    param([int]$ProcessId)
+    Write-Host "Scanning readable memory for Java PID $ProcessId..." -ForegroundColor Green
+    try {
+        $hits = [MagiciansRevealNativeMemory]::Scan($ProcessId, [string[]]$cheatStrings, 100)
+        foreach ($hit in $hits) {
+            Add-Finding -Tier "Detection" -Category "Process Memory" -Title "Signature Found in Java Memory" `
+                -Message "'$hit' found in readable memory of PID $ProcessId" -Evidence @{PID=$ProcessId; String=$hit}
+        }
+        if ($hits.Count -eq 0) { Write-Host "No configured signatures found in readable memory." -ForegroundColor Yellow }
+    } catch { Write-Host "Memory scan failed for PID ${ProcessId}: $($_.Exception.Message)" -ForegroundColor Red }
+}
+
 function Test-Admin {
     (New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
@@ -468,8 +512,8 @@ function Scan-System {
     ) | Where-Object { Test-Path $_ -PathType Container }
 
     $residualFiles = foreach ($root in $residualRoots) {
-        Get-ChildItem -LiteralPath $root -File -Recurse -Force -ErrorAction SilentlyContinue |
-            Where-Object { $_.LastWriteTime -ge (Get-Date).AddDays(-30) -and $_.Length -le 50MB }
+        Get-ChildItem -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue |
+            Where-Object { -not $_.PSIsContainer -and $_.LastWriteTime -ge (Get-Date).AddDays(-30) -and $_.Length -le 50MB }
     }
     foreach ($file in ($residualFiles | Sort-Object FullName -Unique)) {
         $nameHit = $false
@@ -524,7 +568,12 @@ function Scan-MinecraftUniverse {
         Write-Host "  PID $($target.PID) | $($target.Process) | Active: $($target.Active)" -ForegroundColor White
         Add-Finding -Tier "Info" -Category "Minecraft Session" -Title "Active Minecraft Process" `
             -Message "Minecraft JVM PID $($target.PID) is active." -Evidence @{PID=$target.PID; Process=$target.Process; Active=$target.Active}
-        [void]$roots.Add((Split-Path $target.CommandLine -Parent -ErrorAction SilentlyContinue))
+        Scan-JavaMemory -ProcessId $target.PID
+        # Do not treat the complete command line as a filesystem path.
+        if ($target.CommandLine -match '(?i)-gameDir\s+"([^"]+)"') {
+            $gameDir = $Matches[1]
+            if (Test-Path $gameDir -PathType Container) { [void]$roots.Add((Resolve-Path $gameDir).Path) }
+        }
         foreach ($token in [regex]::Matches($target.CommandLine, '(?i)([A-Za-z]:\\[^" ]*(?:minecraft|\.minecraft|mods|libraries)[^" ]*)')) {
             $candidate = $token.Groups[1].Value.TrimEnd('"')
             if (Test-Path $candidate) { [void]$roots.Add((Resolve-Path $candidate).Path) }
@@ -549,26 +598,12 @@ function Scan-MinecraftUniverse {
     ) | ForEach-Object { if (Test-Path $_ -PathType Container) { [void]$roots.Add((Resolve-Path $_).Path) } }
 
     # Discover actual paths rather than assuming the default .minecraft folder.
-    foreach ($p in (Get-Process -ErrorAction SilentlyContinue)) {
-        try {
-            $ci = Get-CimInstance Win32_Process -Filter "ProcessId = $($p.Id)" -ErrorAction SilentlyContinue
-            if ($ci.CommandLine -match '(?i)(minecraft|java|launcher|prism|multimc)') {
-                $exe = $ci.ExecutablePath
-                if ($exe) { [void]$roots.Add((Split-Path $exe -Parent)) }
-                foreach ($arg in [regex]::Matches($ci.CommandLine, '(?:"([A-Za-z]:\\[^" ]+)"|([A-Za-z]:\\[^ ]+))')) {
-                    $candidate = if ($arg.Groups[1].Success) { $arg.Groups[1].Value } else { $arg.Groups[2].Value }
-                    if (Test-Path $candidate) { [void]$roots.Add((Split-Path (Resolve-Path $candidate) -Parent)) }
-                }
-            }
-        } catch {}
-    }
-
     $since = $script:ScanStart
     $textExt = @('.log','.txt','.json','.xml','.cfg','.config','.properties','.dat','.json5','.crash')
     foreach ($root in $roots) {
         Write-Host "Scanning $root" -ForegroundColor DarkGray
-        $files = Get-ChildItem -LiteralPath $root -File -Recurse -Force -ErrorAction SilentlyContinue |
-            Where-Object { $_.LastWriteTime -ge $since -and $_.Length -le 100MB }
+        $files = Get-ChildItem -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue |
+            Where-Object { -not $_.PSIsContainer -and $_.LastWriteTime -ge $since -and $_.Length -le 100MB }
         foreach ($file in $files) {
             foreach ($sig in $suspiciousPatterns) {
                 if ($file.Name -imatch [regex]::Escape($sig)) {
