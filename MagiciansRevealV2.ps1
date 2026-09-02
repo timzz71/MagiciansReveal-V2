@@ -29,7 +29,7 @@ $clients = @('vape','vapelite','meteorclient','liquidbounce','wurstclient','sigm
 $modules = @('killaura','crystalaura','anchor aura','bed aura','scaffold','speedhack','flyhack','reachhack','hitboxexpand','playeresp','xrayhack','autoclicker','aimassist','silentaim','triggerbot','autototem','autopot','autocrystal','autanchor','autofirework','elytraswap','nuker','packetfly','velocity','noslow','fastplace','selfdestruct','backdoor','tokenlogger','sessionstealer','discordtoken')
 $allTerms = @($clients + $modules | Where-Object { $_ -and $_ -notmatch '^(uzi|argon|delta|krypton|lambda|rift|sigma|future|impact|coffee|mint|spark|swift|tensor|orchard)$' } | Sort-Object -Unique)
 $strongPatterns = @(
-    '(?i)mete(orclient)?','(?i)vape(v4|lite)?','(?i)liquidbounce','(?i)wurst(client)?','(?i)rusherhack','(?i)doomsday(client)?','(?i)198macros','(?i)backdoored','(?i)leuxbackdoor','(?i)skidbounce','(?i)bleachhack','(?i)forgehax','(?i)kamiblue','(?i)phobos','(?i)novoware','(?i)salhack','(?i)zeroday','(?i)orchard(client)?'
+    '(?i)(?<![a-z])meteor(client)?(?![a-z])','(?i)(?<![a-z])vape(v4|lite)?(?![a-z])','(?i)(?<![a-z])liquidbounce(?![a-z])','(?i)(?<![a-z])wurst(client)?(?![a-z])','(?i)(?<![a-z])rusherhack(?![a-z])','(?i)(?<![a-z])doomsday(client)?(?![a-z])','(?i)(?<![a-z])198macros(?![a-z])','(?i)(?<![a-z])backdoored(?![a-z])','(?i)(?<![a-z])leuxbackdoor(?![a-z])','(?i)(?<![a-z])skidbounce(?![a-z])','(?i)(?<![a-z])bleachhack(?![a-z])','(?i)(?<![a-z])forgehax(?![a-z])','(?i)(?<![a-z])kamiblue(?![a-z])','(?i)(?<![a-z])phobos(?![a-z])','(?i)(?<![a-z])novoware(?![a-z])','(?i)(?<![a-z])salhack(?![a-z])','(?i)(?<![a-z])zeroday(?![a-z])','(?i)(?<![a-z])orchard(client)?(?![a-z])'
 )
 
 Write-Host 'ScreenshareScanner - Minecraft forensic scan' -ForegroundColor Cyan
@@ -46,16 +46,32 @@ function Scan-File([IO.FileInfo]$File) {
     try {
         $zip = [System.IO.Compression.ZipFile]::OpenRead($File.FullName)
         $fileHits = New-Object System.Collections.Generic.List[string]
+        $moduleHits = New-Object System.Collections.Generic.HashSet[string]([StringComparer]::OrdinalIgnoreCase)
+        $strongHits = New-Object System.Collections.Generic.HashSet[string]([StringComparer]::OrdinalIgnoreCase)
+        $loaderHits = 0; $encodedHits = 0; $classCount = 0; $textEntries = 0
+        $legitName = $File.Name -match '(?i)appleskin|architectury|badoptimizations|c2me|cloth-config|collective|entityculling|fabric-api|fabric-language|ferritecore|fullbright|healthindicators|krypton|lithium|modernfix|moreculling|placeholder-api|scalablelux|shieldfixes|shulkerboxtooltip|sodium|voicechat|walksylib|yet.another.config|zfastnoise|zoomify'
         foreach ($e in $zip.Entries) {
             if ($e.Length -gt 25MB) { continue }
             $buf = New-Object IO.MemoryStream; $e.Open().CopyTo($buf); $text = Get-TextFromBytes $buf.ToArray(); $buf.Dispose()
-            foreach ($pattern in $strongPatterns) { $m=[regex]::Match($text,$pattern); if($m.Success -and $fileHits -notcontains $m.Value){ [void]$fileHits.Add($m.Value) } }
-            foreach ($term in $allTerms) { if ($text.IndexOf($term,[StringComparison]::OrdinalIgnoreCase) -ge 0 -and $fileHits -notcontains $term) { [void]$fileHits.Add($term) } }
-            if ($text -match 'Class\.forName|Method\.invoke|System\.load(?:Library)?|java/lang/Runtime') { Add-Finding 'OBFUSCATION_OR_LOADER_ON_DISK' Warning Disk 'Loader or reflective code detected' "Suspicious runtime-loading/reflection marker in $($File.Name)" @{file=$File.FullName;entry=$e.FullName} }
-            if ($text -match '(?i)[A-Za-z0-9+/]{60,}={0,2}') { Add-Finding 'OBFUSCATED_STRING_ON_DISK' Warning Disk 'Long Base64-like string detected' "Potential encoded payload in $($File.Name)" @{file=$File.FullName;entry=$e.FullName} }
+            if ($e.FullName -match '\.class$') { $classCount++ }
+            if ($e.FullName -match '\.(class|json|mf)$') { $textEntries++ }
+            foreach ($pattern in $strongPatterns) { $m=[regex]::Match($text,$pattern); if($m.Success){ [void]$strongHits.Add($m.Value) } }
+            # Module names are supporting evidence only; never detections alone.
+            foreach ($term in $modules) { if ($text.IndexOf($term,[StringComparison]::OrdinalIgnoreCase) -ge 0) { [void]$moduleHits.Add($term) } }
+            if ($text -match 'Class\.forName|Method\.invoke|System\.load(?:Library)?|java/lang/Runtime') { $loaderHits++ }
+            if ($text -match '(?i)(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{80,}={0,2}(?![A-Za-z0-9+/])') { $encodedHits++ }
         }
         $zip.Dispose()
-        if ($fileHits.Count -gt 0) { Add-Finding 'CHEAT_STRING_ON_DISK' Detection Disk 'Strong cheat/client evidence in JAR' "$($fileHits -join ', ') found in $($File.Name)." @{file=$File.FullName;terms=@($fileHits)} }
+        # Require a real client identity, or a client identity plus corroboration.
+        # Generic words and isolated obfuscation are deliberately excluded.
+        $strongCount = $strongHits.Count
+        if ($strongCount -gt 0 -and -not $legitName) {
+            Add-Finding 'CHEAT_STRING_ON_DISK' Detection Disk 'Known cheat-client identity in JAR' "$($strongHits -join ', ') found in $($File.Name)." @{file=$File.FullName;clientTerms=@($strongHits);moduleTerms=@($moduleHits);classCount=$classCount}
+        } elseif (-not $legitName -and $moduleHits.Count -ge 3 -and $loaderHits -gt 0) {
+            Add-Finding 'CORRELATED_SUSPICIOUS_CODE' Warning Disk 'Correlated suspicious module and loader evidence' "$($File.Name) contains $($moduleHits.Count) cheat-module indicators and loader/reflection markers." @{file=$File.FullName;moduleTerms=@($moduleHits);loaderMarkers=$loaderHits}
+        } elseif (-not $legitName -and ($loaderHits -ge 4 -or $encodedHits -ge 4)) {
+            Add-Finding 'OBFUSCATION_REVIEW' Info Disk 'Unusual code characteristics require review' "$($File.Name) has repeated loader or encoded-string patterns, without a known cheat identity." @{file=$File.FullName;loaderMarkers=$loaderHits;encodedRegions=$encodedHits}
+        }
     } catch { Add-Finding 'UNREADABLE_JAR' Warning Disk 'JAR could not be inspected' "$($File.Name): $($_.Exception.Message)" @{file=$File.FullName} }
 }
 
