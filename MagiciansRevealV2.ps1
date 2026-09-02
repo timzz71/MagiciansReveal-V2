@@ -24,6 +24,124 @@ $SystemInfo = @{}
 $RulesetVersion = 'builtin-2.0.0'
 $KnownClients = @(); $KnownHosts = @(); $KnownStrings = @(); $KnownHashes = @{}
 
+$moduleNames = @(
+    "AutoCrystal","AutoHitCrystal","AutoAnchor","DoubleAnchor","SafeAnchor","AirAnchor",
+    "AutoTotem","InventoryTotem","HoverTotem","AutoPot","AutoPotRefill","AutoArmor",
+    "ShieldBreaker","ShieldDisabler","AutoMace","MaceSwap","StunSlam","AxeSpam",
+    "TriggerBot","AimAssist","SilentAim","FakeLag","PingSpoof","FakeInv","WTap",
+    "KeyPearl","AutoFirework","ElytraSwap","FastPlace","SelfDestruct","KillAura",
+    "CrystalAura","AnchorAura","BedAura","ReachHack","HitboxExpand","PlayerESP",
+    "XRayHack","ScaffoldWalk","AutoClicker","BowAim","Criticals","NoJumpDelay",
+    "AutoDoubleHand","AutoNethPot","AutoDtap","AutoWeb","AnchorAction","AntiWeb",
+    "AutoBreach","FreezePlayer","LootYeeter","AutoTPA","BaseFinder","AutoEat","AutoMine"
+)
+
+$clientSignatures = @(
+    "com/slither/cyemer","com/slither/velaris","dev/lvstrng/aidsfuscator",
+    "dev.krypton","skid.krypton","dev.virel","org.chainlibs",
+    "meteordevelopment","meteorclient","liquidbounce","fdp-client","net.ccbluex",
+    "doomsdayclient","novaclient","vape.gg","vapeclient","intent.store",
+    "rise.today","aristois","impactclient","rusherhack","catlean",
+    "AsteriaClient","PrestigeClient","GypsyClient","XenonClient","dqrkis.xyz",
+    "WalksyOptimizer","imgui.gl3","imgui.glfw","jnativehook","phantom-refmap.json",
+    "ClientPlayerInteractionManagerAccessor","LicenseCheckMixin","obfuscatedAuth",
+    "sixtwo/","fivefive/","com/alan/clients","club/maxstats",
+    "wtf/moonlight","me/zeroeightsix/kami","today/opai","xyz/greaj",
+    "com/cheatbreaker","com/moonsworth","novoware","novoclient","pandaware",
+    "moonClient","astolfo","futureClient","exhibition",
+    "org/chainlibs/module/impl/modules"
+    # NOTE: generic single-word or generic-pattern signatures (e.g. bare
+    # "mixin/accessors", "orchard", "gypsy", "argon", "inertia", "konas")
+    # were deliberately excluded here — they're either normal Mixin/Fabric
+    # plumbing or common English words that show up in legitimate mod
+    # packages, and matching on them alone produces false positives like
+    # flagging ferritecore/moreculling/BadOptimizations for using accessors.
+)
+
+# Literal in-jar strings that show up in configs / decompiled fragments of
+# cheat clients. Includes fullwidth-unicode evasion variants some clients
+# use to dodge plain ASCII string scans.
+$literalCheatStrings = @(
+    "AutoCrystal","autocrystal","dontPlaceCrystal","dontBreakCrystal","healPotSlot",
+    "canPlaceCrystalServer","AutoHitCrystal","AutoAnchor","anchortweaks","anchorMacro",
+    "AutoTotem","InventoryTotem","HoverTotem","legittotem","AutoPot","speedPotSlot",
+    "strengthPotSlot","AutoArmor","preventSwordBlockBreaking","preventSwordBlockAttack",
+    "ShieldDisabler","ShieldBreaker","Breaking shield with axe...","AutoDoubleHand",
+    "Failed to switch to mace after axe!","AutoMace","MaceSwap","SpearSwap","StunSlam",
+    "findKnockbackSword","attackRegisteredThisClick","AimAssist","triggerbot",
+    "Silent Rotations","FakeInv","swapBackToOriginalSlot","FakeLag","pingspoof",
+    "fakePunch","mace_swap","quick_strike","macro_198","stun_slam","safe_anchor",
+    "double_anchor","auto_pot_refill","walksy_optimizer","key_pearl","aim_assist",
+    "auto_neth_pot","auto_dtap","trigger_bot","auto_web","AnchorAction",
+    "Places two anchors for massive damage","REOFFHAND_TOTEM","webmacro","AntiWeb",
+    "AutoWeb","selfdestruct","autoCrystalPlaceClock","AutoFirework","ElytraSwap",
+    "NoJumpDelay","AuthBypass","obfuscatedAuth","LicenseCheckMixin","BaseFinder",
+    "invsee","ItemExploit","FreezePlayer","LWFH Crystal","KeyPearl","LootYeeter",
+    "FastPlace","AutoBreach","setBlockBreakingCooldown","getBlockBreakingCooldown",
+    "onBlockBreaking","invokeDoAttack","invokeDoItemUse","invokeOnMouseButton",
+    "POT_CHEATS","Entity.isGlowing","No Bounce","Place Delay","Break Delay",
+    "Place Chance","Break Chance","Stop On Kill","Anti Weakness","Trigger Key",
+    "Totem Slot","Silent Rotations","Rotation Speed","Easing Strength",
+    "Glowstone Delay","Explode Delay","Explode Chance","Anchor Macro",
+    "Reach Distance","Attack Delay","Breach Delay","Require Elytra",
+    "Check Line of Sight","Require Crit","Predict Damage","Check Shield",
+    "Predict Crystals","Blatant","Force Totem","Vertical Speed","Swap Speed",
+    "Mace Priority","Min Totems","Min Pearls","Drop Interval","Loot Yeeter",
+    "Horizontal Aim Speed","Web Delay","Holding Web","Hit Delay",
+    "Require Hold Axe","placeInterval","breakInterval","stopOnKill",
+    "activateOnRightClick","holdCrystal","KillAura","ClickAura","MultiAura",
+    "ForceField","LegitAura","AimBot","AutoAim","AimLock","HeadSnap","CrystalAura",
+    "AnchorAura","AnchorFill","AnchorPlace","BedAura","AutoBed","BedBomb","BedPlace",
+    "BowAimbot","BowSpam","AutoBow","AutoCrit","CritBypass","AlwaysCrit",
+    "ReachHack","ExtendReach","LongReach","HitboxExpand","AntiKB","NoKnockback",
+    "GrimVelocity","GrimDisabler","VelocitySpoof","KBReduce","OffhandTotem",
+    "TotemSwitch","Burrow","SelfTrap","HoleFiller","AntiSurround","AntiBurrow",
+    "WTap","TargetStrafe","AutoGap","AutoPearl","FlyHack","CreativeFlight",
+    "BoatFly","PacketFly","AirJump","SpeedHack","BHop","BunnyHop","AntiFall",
+    "NoFallDamage","StepHack","FastClimb","AutoStep","HighStep","WaterWalk",
+    "LiquidWalk","LavaWalk","NoSlow","NoSlowdown","NoWeb","NoSoulSand","WallHack",
+    "ElytraSpeed","InstantElytra","ScaffoldWalk","FastBridge","BuildHelper",
+    "AutoBridge","Nuker","InstantBreak","GhostHand","NoSwing","PlaceAssist",
+    "AirPlace","AutoPlace","InstantPlace","PlayerESP","MobESP","ItemESP",
+    "StorageESP","ChestESP","Tracers","NameTagsHack","XRayHack","OreFinder",
+    "CaveFinder","OreESP","NewChunks","ChunkBorders","TunnelFinder","TargetHUD",
+    "DoubleClicker","JitterClick","ButterflyClick","CPSBoost","ChestStealer",
+    "InvManager","AutoSprint","AntiAFK","AutoRespawn","PopSwitch","FakeLatency",
+    "FakePing","SpoofRotation","PositionSpoof","GameSpeed","SpeedTimer",
+    "GrimBypass","VulcanBypass","MatrixBypass","AACBypass","VerusDisabler",
+    "IntaveBypass","WatchdogBypass","PacketMine","PacketWalk","PacketSneak",
+    "PacketCancel","PacketDupe","PacketSpam","SelfDestruct","HideClient",
+    "SessionStealer","TokenLogger","TokenGrabber","DiscordToken","RemoteAccess",
+    "ReverseShell","C2Server","Backdoor","KeyLogger","StashFinder","TrailFinder",
+    "JNativeHook","GlobalScreen","NativeKeyListener","client-refmap.json",
+    "cheat-refmap.json",
+    # Fullwidth-unicode variants (common obfuscation trick to dodge ASCII scans)
+    "ＡｕｔｏＣｒｙｓｔａｌ","ＡｕｔｏＨｉｔＣｒｙｓｔａｌ","ＡｕｔｏＡｎｃｈｏｒ",
+    "ＤｏｕｂｌｅＡｎｃｈｏｒ","ＳａｆｅＡｎｃｈｏｒ","ＡｕｔｏＴｏｔｅｍ",
+    "ＨｏｖｅｒＴｏｔｅｍ","ＩｎｖｅｎｔｏｒｙＴｏｔｅｍ","ＡｕｔｏＰｏｔ",
+    "ＡｕｔｏＡｒｍｏｒ","ＳｈｉｅｌｄＤｉｓａｂｌｅｒ","ＡｕｔｏＤｏｕｂｌｅＨａｎｄ",
+    "ＡｕｔｏＣｌｉｃｋｅｒ","ＡｕｔｏＭａｃｅ","ＭａｃｅＳｗａｐ","ＡｉｍＡｓｓｉｓｔ",
+    "ＴｒｉｇｇｅｒＢｏｔ","Ｓｉｌｅｎｔ Ｒｏｔａｔｉｏｎｓ","ＦａｋｅＬａｇ",
+    "Ｆａｋｅ Ｐｕｎｃｈ","Ａｎｔｉ Ｗｅｂ","ＡｕｔｏＷｅｂ","Ｗａｌｋｓｙ Ｏｐｔｉｍｉｚｅｒ",
+    "ＥｌｙｔｒａＳｗａｐ","ＬＷＦＨ Ｃｒｙｓｔａｌ","ＫｅｙＰｅａｒｌ","Ｆａｓｔ Ｐｌａｃｅ",
+    "Ａｕｔｏ Ｂｒｅａｃｈ"
+)
+
+# Known cheat-grade obfuscators / packers seen wrapping hacked-client jars
+$knownCheatObfuscators = @{
+    "Skidfuscator"   = @("dev/skidfuscator", "Skidfuscator", "skidfuscator.dev")
+    "Paramorphism"   = @("Paramorphism", "paramorphism-", "dev/paramorphism")
+    "Radon"          = @("ItzSomebody/Radon", "me/itzsomebody/radon", "Radon Obfuscator")
+    "Caesium"        = @("sim0n/Caesium", "Caesium Obfuscator", "dev/sim0n/caesium")
+    "Bozar"          = @("vimasig/Bozar", "Bozar Obfuscator", "com/bozar")
+    "Branchlock"     = @("Branchlock", "branchlock.dev")
+    "Binscure"       = @("Binscure", "com/binscure")
+    "Qprotect"       = @("Qprotect", "QProtect", "mdma.dev/qprotect")
+}
+
+$allIndicators = $moduleNames + $clientSignatures
+
+
 function Add-Flag {
     param([ValidateSet('Info','Warning','Detection')][string]$Tier,[string]$Id,[string]$Category,[string]$Title,[string]$Message,[hashtable]$Evidence,[string]$Module)
     $Flags.Add([pscustomobject]@{ id=$Id; tier=$Tier; category=$Category; title=$Title; message=$Message; evidence=$Evidence; timestamp=[DateTime]::UtcNow.ToString('o'); module=$Module; ruleset_version=$script:RulesetVersion })
@@ -49,13 +167,13 @@ function Get-NormalizedForms { param([string]$Text)
 function Get-Signatures {
     $script:RulesetVersion = 'builtin-2.0.0'
     if (Test-Path -LiteralPath (Join-Path $SignatureDirectory 'VERSION')) { $script:RulesetVersion = (Get-Content (Join-Path $SignatureDirectory 'VERSION') -Raw).Trim() }
-    $script:KnownClients = @(); $script:KnownHosts = @(); $script:KnownStrings = @(); $script:KnownHashes = @{}
+    $script:KnownClients = @($clientSignatures); $script:KnownHosts = @(); $script:KnownStrings = @($moduleNames + $literalCheatStrings); $script:KnownHashes = @{}
     foreach ($name in 'known-clients.txt','obfuscated.txt','jvm-args.txt','known-hosts.txt') {
         $p=Join-Path $SignatureDirectory "strings\$name"; if (Test-Path $p) { $vals=Get-Content $p | Where-Object { $_ -and -not $_.Trim().StartsWith('#') } | ForEach-Object Trim
             if ($name -eq 'known-clients.txt') {$script:KnownClients += $vals}; if ($name -eq 'known-hosts.txt') {$script:KnownHosts += $vals}; if ($name -in 'obfuscated.txt','jvm-args.txt') {$script:KnownStrings += $vals} }
     }
     $csv=Join-Path $SignatureDirectory 'strings\known-hashes.csv'; if (Test-Path $csv) { foreach($r in (Import-Csv $csv)) { if($r.hash){$script:KnownHashes[$r.hash.ToLowerInvariant()]=$r} } }
-    Add-Flag Info 'ruleset.loaded' 'signatures' 'Signature set loaded' "Ruleset $script:RulesetVersion loaded. $($KnownClients.Count) client names, $($KnownHosts.Count) hosts, and $($KnownHashes.Count) hashes available." @{ signature_directory=$SignatureDirectory } 'signatures'
+    Add-Flag Info 'ruleset.loaded' 'signatures' 'Signature set loaded' "Ruleset $script:RulesetVersion loaded. Built-in supplied signatures plus external rules are active: $($KnownClients.Count) client names, $($KnownStrings.Count) strings, $($KnownHosts.Count) hosts, and $($KnownHashes.Count) hashes." @{ signature_directory=$SignatureDirectory; builtin_modules=$moduleNames.Count; builtin_clients=$clientSignatures.Count; builtin_literal_strings=$literalCheatStrings.Count; obfuscators=$knownCheatObfuscators.Keys } 'signatures'
 }
 function Get-ProcessCommandLineSafe { param($Process)
     try { (Get-CimInstance Win32_Process -Filter "ProcessId=$($Process.Id)" -ErrorAction Stop).CommandLine } catch { $null }
