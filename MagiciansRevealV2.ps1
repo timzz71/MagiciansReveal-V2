@@ -2,7 +2,7 @@
 .SYNOPSIS
     MagiciansReveal v2.0 – Professional Minecraft Cheat Forensic Scanner
 .DESCRIPTION
-    Stable high-signal detection of cheats, residual artifacts, self-destruct traces,
+    High-signal detection of cheats, residual artifacts, self-destruct traces,
     DNS activity, JVM injection and suspicious mods.
 .AUTHOR
     Tim Cheese
@@ -26,7 +26,7 @@ function Write-Banner {
     Write-Host "  ║                   M A G I C I A N S   R E V E A L                    ║" -ForegroundColor Yellow
     Write-Host "  ║                                                                      ║" -ForegroundColor DarkYellow
     Write-Host "  ║                Professional Cheat Forensic Scanner                   ║" -ForegroundColor White
-    Write-Host "  ║                              V2.0                                    ║" -ForegroundColor DarkGray
+    Write-Host "  ║                              v2.0                                    ║" -ForegroundColor DarkGray
     Write-Host "  ║                                                                      ║" -ForegroundColor DarkYellow
     Write-Host "  ╚══════════════════════════════════════════════════════════════════════╝" -ForegroundColor DarkYellow
     Write-Host ""
@@ -75,12 +75,13 @@ function Add-Finding {
 #region Signatures
 $HighValueStrings = @(
     # Clients
-    "VapeClient","VapeLite","vape.gg","MeteorClient","meteorclient","meteordevelopment",
-    "LiquidBounce","WurstClient","SigmaClient","Novoware","GameSense","OsirisClient",
-    "CosmosClient","AzuraClient","DoomsdayClient","ArgonClient","KryptonClient",
-    "PrestigeClient","FutureClient","RusherHack","Aristois","Pandaware","Astolfo",
-    "IntentClient","Novoclient","Hellion","VirginClient","XenonClient","GypsyClient",
-    "Dqrkis","WalksyOptimizer","LWFH Crystal","catlean","AsteriaClient","198Macros",
+    "Doomsday","DoomsdayClient","doomsday","VapeClient","VapeLite","vape.gg",
+    "MeteorClient","meteorclient","meteordevelopment","LiquidBounce","WurstClient",
+    "SigmaClient","Novoware","GameSense","OsirisClient","CosmosClient","AzuraClient",
+    "ArgonClient","KryptonClient","PrestigeClient","FutureClient","RusherHack",
+    "Aristois","Pandaware","Astolfo","IntentClient","Novoclient","Hellion",
+    "VirginClient","XenonClient","GypsyClient","Dqrkis","WalksyOptimizer",
+    "LWFH Crystal","catlean","AsteriaClient","198Macros",
 
     # Combat / Crystal / Totem
     "AutoCrystal","AutoHitCrystal","CrystalAura","AimAssist","TriggerBot","SilentAim",
@@ -104,7 +105,7 @@ $CheatDomains = @(
 )
 #endregion
 
-#region Core Functions
+#region Scan Functions
 function Scan-Mods {
     param([string]$Path)
 
@@ -240,46 +241,65 @@ function Scan-DNS {
 }
 
 function Scan-Residual {
-    Write-Section "RESIDUAL + SELF-DESTRUCT SCAN"
+    Write-Section "RESIDUAL + SELF-DESTRUCT SCAN (Aggressive)"
+
+    $ResidualSignatures = @(
+        "Doomsday","doomsday","DoomsdayClient","doomsdayclient","doomsday.jar",
+        "Vape","VapeClient","VapeLite","Meteor","MeteorClient","LiquidBounce",
+        "Future","RusherHack","Aristois","Pandaware","Astolfo","Intent",
+        "Novoline","Sigma","Wurst","Impact","Konas","Inertia","Exhibition",
+        "SelfDestruct","selfdestruct","self destruct","HideClient","StringCleaner",
+        "AntiSS","Replace Mod","USN Journal Cleaner","Delete USN Journal",
+        "Walksy","LWFH","catlean","Asteria","Prestige","Xenon","Gypsy",
+        "Argon","Krypton","Hellion","Virgin","Dqrkis","198Macros"
+    )
+
+    $found = 0
+    $cutoff = (Get-Date).AddDays(-21)
 
     $searchPaths = @(
         $env:TEMP,
         "$env:LOCALAPPDATA\Temp",
         "$env:WINDIR\Prefetch",
+        "$env:APPDATA\.minecraft",
         "$env:APPDATA\.minecraft\logs",
         "$env:APPDATA\.minecraft\crash-reports",
+        "$env:APPDATA\.minecraft\mods",
         "$env:LOCALAPPDATA\CrashDumps",
-        "$env:APPDATA\.minecraft"
+        "$env:APPDATA\Microsoft\Windows\Recent",
+        "$env:APPDATA\Microsoft\Windows\Recent\AutomaticDestinations",
+        "$env:APPDATA\Microsoft\Windows\Recent\CustomDestinations",
+        "$env:USERPROFILE\Downloads",
+        "$env:USERPROFILE\Desktop"
     ) | Where-Object { Test-Path $_ }
 
-    $found = 0
-    $cutoff = (Get-Date).AddDays(-14)
+    Write-Host "  Scanning residual locations..." -ForegroundColor DarkGray
 
     $files = Get-ChildItem -Path $searchPaths -Recurse -Force -ErrorAction SilentlyContinue |
              Where-Object {
                  -not $_.PSIsContainer -and
                  $_.LastWriteTime -gt $cutoff -and
-                 $_.Length -lt 25MB
+                 $_.Length -lt 40MB
              }
 
     foreach ($file in $files) {
-        # Filename check
-        foreach ($sig in $HighValueStrings) {
-            if ($file.Name -match [regex]::Escape($sig)) {
-                Add-Finding -Severity "MEDIUM" -Title $file.Name -Details "Suspicious residual filename"
+        $nameLower = $file.Name.ToLower()
+
+        foreach ($sig in $ResidualSignatures) {
+            if ($nameLower -match [regex]::Escape($sig.ToLower())) {
+                Add-Finding -Severity "HIGH" -Title $file.FullName -Details "Suspicious residual filename matched: $sig"
                 $found++
                 break
             }
         }
 
-        # Content check (text files only)
-        if ($file.Length -lt 4MB -and $file.Extension -match '\.(log|txt|json|cfg|properties|xml|yml)$') {
+        if ($file.Length -lt 5MB -and $file.Extension -match '\.(log|txt|json|cfg|properties|xml|yml)$') {
             try {
                 $content = Get-Content -LiteralPath $file.FullName -Raw -ErrorAction SilentlyContinue
                 if ($content) {
-                    foreach ($sig in $HighValueStrings) {
+                    foreach ($sig in $ResidualSignatures) {
                         if ($content -match [regex]::Escape($sig)) {
-                            Add-Finding -Severity "HIGH" -Title $file.Name -Details "Contains signature: $sig"
+                            Add-Finding -Severity "HIGH" -Title $file.Name -Details "Contains residual signature: $sig"
                             $found++
                             break
                         }
@@ -289,34 +309,78 @@ function Scan-Residual {
         }
     }
 
-    # Prefetch special check
-    $prefetch = Get-ChildItem "$env:WINDIR\Prefetch" -ErrorAction SilentlyContinue
-    if ($prefetch -and $prefetch.Count -lt 8) {
-        Add-Finding -Severity "MEDIUM" -Title "Prefetch Anomaly" -Details "Very low prefetch count ($($prefetch.Count)) — possible cleaning"
-        $found++
+    # Prefetch
+    Write-Host "  Checking Prefetch..." -ForegroundColor DarkGray
+    $prefetchDir = "$env:WINDIR\Prefetch"
+    if (Test-Path $prefetchDir) {
+        $prefetchFiles = Get-ChildItem $prefetchDir -ErrorAction SilentlyContinue
+        if ($prefetchFiles.Count -lt 10) {
+            Add-Finding -Severity "MEDIUM" -Title "Prefetch Anomaly" -Details "Very low prefetch count ($($prefetchFiles.Count)) — possible log cleaning"
+            $found++
+        }
+
+        foreach ($pf in $prefetchFiles) {
+            $pfName = $pf.Name.ToUpper()
+            foreach ($sig in $ResidualSignatures) {
+                if ($pfName -match [regex]::Escape($sig.ToUpper())) {
+                    Add-Finding -Severity "HIGH" -Title $pf.Name -Details "Prefetch entry matched suspicious name"
+                    $found++
+                    break
+                }
+            }
+        }
     }
 
-    # Basic USN Journal
+    # USN Journal
+    Write-Host "  Reading USN Journal..." -ForegroundColor DarkGray
     try {
-        $usnLines = fsutil usn readjournal C: 2>$null | Select-String -Pattern "\.jar"
-        foreach ($line in $usnLines) {
-            if ($line -match 'File Name\s+:\s+(.+\.jar)') {
-                $jarName = $Matches[1].Trim()
-                foreach ($sig in $HighValueStrings) {
-                    if ($jarName -match [regex]::Escape($sig)) {
-                        Add-Finding -Severity "HIGH" -Title $jarName -Details "USN Journal — deleted/renamed JAR (possible self-destruct)"
+        $usnOutput = fsutil usn readjournal C: csv 2>$null
+        if ($usnOutput) {
+            $usnLines = $usnOutput | Select-String -Pattern "\.jar|\.class|doomsday|vape|meteor|liquid|future|rusher|selfdestruct|replace" -CaseSensitive:$false
+            foreach ($line in $usnLines) {
+                $lineText = $line.ToString()
+                foreach ($sig in $ResidualSignatures) {
+                    if ($lineText -match [regex]::Escape($sig)) {
+                        Add-Finding -Severity "CRITICAL" -Title "USN Journal Hit" -Details "Possible deleted/renamed file related to: $sig"
                         $found++
                         break
                     }
                 }
             }
         }
-    } catch {}
+    } catch {
+        Write-Host "  [!] USN Journal read failed (needs Admin)." -ForegroundColor Yellow
+    }
 
+    # Registry
+    Write-Host "  Checking registry..." -ForegroundColor DarkGray
+    $regPaths = @(
+        "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run",
+        "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU"
+    )
+    foreach ($rp in $regPaths) {
+        if (Test-Path $rp) {
+            try {
+                $props = Get-ItemProperty -Path $rp -ErrorAction SilentlyContinue
+                $props.PSObject.Properties | ForEach-Object {
+                    $val = "$($_.Name) $($_.Value)"
+                    foreach ($sig in $ResidualSignatures) {
+                        if ($val -match [regex]::Escape($sig)) {
+                            Add-Finding -Severity "HIGH" -Title "Registry Hit" -Details "$rp → matched $sig"
+                            $found++
+                        }
+                    }
+                }
+            } catch {}
+        }
+    }
+
+    Write-Host ""
     if ($found -eq 0) {
-        Write-Host "  ✔  No residual or self-destruct traces found." -ForegroundColor Green
+        Write-Host "  ✔  No residual or self-destruct traces found with current methods." -ForegroundColor Green
+        Write-Host "     Note: Advanced clients can wipe most disk traces." -ForegroundColor DarkGray
     } else {
-        Write-Host "  ⚠  $found residual finding(s) detected." -ForegroundColor Red
+        Write-Host "  ⚠  $found residual / self-destruct related finding(s) detected." -ForegroundColor Red
     }
 }
 #endregion
@@ -336,7 +400,6 @@ function Show-Menu {
     Write-Host ""
 }
 
-# Start
 Write-Banner
 
 $IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
