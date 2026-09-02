@@ -7,7 +7,7 @@
 .AUTHOR
     Tim$erz
 .VERSION
-    2.1.1
+    2.1.2
 #>
 
 #region Auto‑Compile to EXE
@@ -20,7 +20,7 @@ if ($MyInvocation.MyCommand.Path -match '\.ps1$') {
         }
         Import-Module ps2exe -Force
         ps2exe -InputFile $MyInvocation.MyCommand.Path -OutputFile $exePath `
-               -Title "MagiciansRevealV2" -Version "2.1.1" -Company "Tim`$erz" `
+               -Title "MagiciansRevealV2" -Version "2.1.2" -Company "Tim`$erz" `
                -Description "Minecraft Cheat Scanner" -NoConsole -ErrorAction SilentlyContinue
         if (Test-Path $exePath) {
             Write-Host "EXE created: $exePath" -ForegroundColor Green
@@ -36,7 +36,7 @@ if ($MyInvocation.MyCommand.Path -match '\.ps1$') {
 }
 #endregion
 
-#region GUI – NO x:Class, fully dynamic XAML
+#region GUI – NO x:Class, all events via .Add_EventName()
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms
 
 $xaml = @'
@@ -179,22 +179,23 @@ $BrowseMinecraftButton = $window.FindName("BrowseMinecraftButton")
 $BrowseOutputButton = $window.FindName("BrowseOutputButton")
 $MarqueeTransform = $window.FindName("MarqueeTransform")
 
-# Start marquee
-if ($window.Resources["Marquee"]) { $window.BeginStoryboard($window.Resources["Marquee"]) }
-
-# Event bindings – correct AddHandler (event, delegate)
-$window.AddHandler([System.Windows.Window]::MouseLeftButtonDownEvent, [System.Windows.Input.MouseButtonEventHandler]{ $window.DragMove() })
-$CloseButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, [System.Windows.RoutedEventHandler]{ $window.Close() })
-
+# ---- Event bindings using .Add_EventName() ----
+# Window drag
+$window.Add_MouseLeftButtonDown({ $window.DragMove() })
+# Close
+$CloseButton.Add_Click({ $window.Close() })
 # Browse buttons
-$BrowseMinecraftButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
+$BrowseMinecraftButton.Add_Click({
     $folder = New-Object System.Windows.Forms.FolderBrowserDialog
     if ($folder.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $MinecraftDirBox.Text = $folder.SelectedPath }
 })
-$BrowseOutputButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
+$BrowseOutputButton.Add_Click({
     $folder = New-Object System.Windows.Forms.FolderBrowserDialog
     if ($folder.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $OutputDirBox.Text = $folder.SelectedPath }
 })
+
+# Start marquee animation
+if ($window.Resources["Marquee"]) { $window.BeginStoryboard($window.Resources["Marquee"]) }
 
 # ---- Signature Database (Zero False Positives) ----
 $cheatClientNames = @(
@@ -596,7 +597,7 @@ function Scan-EventLogs {
 }
 
 # ---- Scan Button Click ----
-$ScanButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
+$ScanButton.Add_Click({
     $findings = @()
     $ResultsList.Items.Clear()
     $ExportButton.IsEnabled = $false
@@ -632,7 +633,7 @@ $ScanButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
 })
 
 # ---- Export Button Click ----
-$ExportButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
+$ExportButton.Add_Click({
     if (-not $script:lastFindings) { return }
     $report = @{
         ScanTime = (Get-Date).ToString("o")
@@ -659,6 +660,6 @@ $ExportButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
     [System.Windows.MessageBox]::Show("Reports saved to $($script:outputDir)", "Export Complete", "OK", "Information")
 })
 
-# Start GUI
+# Start GUI with fade‑in
 if ($window.Resources["FadeIn"]) { $window.BeginStoryboard($window.Resources["FadeIn"]) }
 $window.ShowDialog() | Out-Null
