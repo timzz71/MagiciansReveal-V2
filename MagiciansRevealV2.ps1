@@ -15,6 +15,7 @@
 $OutputEncoding = [System.Text.Encoding]::UTF8
 chcp 65001 | Out-Null
 Clear-Host
+Write-Host "Running MagiciansRevealV2 v3.0.2 from: $($MyInvocation.MyCommand.Path)" -ForegroundColor DarkGray
 
 $Banner = @"
  ███╗   ███╗ █████╗  ██████╗ ██╗ ██████╗██╗ █████╗ ███╗   ██╗███████╗
