@@ -1,13 +1,14 @@
 [CmdletBinding()]
 param(
     [string]$ModsPath,
-    [string]$OutputDir = (Get-Location).Path
+    [string]$OutputDir = $PSScriptRoot
 )
 
 $ErrorActionPreference = 'SilentlyContinue'
 $scanTime = (Get-Date).ToUniversalTime().ToString('o')
 $flags = New-Object System.Collections.Generic.List[object]
 $minecraft = $null
+Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 function Add-Finding {
     param([string]$Id,[ValidateSet('Detection','Warning','Info')][string]$Tier,
@@ -24,9 +25,12 @@ function Get-TextFromBytes([byte[]]$Bytes) {
     return ($a + "`n" + $u)
 }
 
-$clients = @('vape','vapelite','meteor','meteorclient','liquidbounce','wurst','wurstclient','sigma','salhack','novoware','gamesense','osiris','cosmos','sorus','azura','doomsday','argon','krypton','prestige','198macros','delta','elysian','onyx','lumina','momentum','ravenb','uzi','skidbounce','skidcraft','backdoored','leuxbackdoor','grassware','allahware','bbcware','arsenic','atrium','bleachhack','caizm','coffe e','cranberry','evangelion','fdp','fogclient','forgehax','huzuni','hydrogen','kamiblue','konas','kura','lambda','lavahack','mercury','mintclient','mirai','nclient','neptunium','ozark','raion','rebirth','riftclient','selene','seppuku','silenceclient','sparkclient','swiftclient','tensorclient','tokyoclient','trollhack','vertexclient','vrpos','xulu','zeon','zerotwo','zodiac','impact','aristois','kami','phobos','rusherhack','futureclient','remix','yasha','zeroday','orchard')
+$clients = @('vape','vapelite','meteorclient','liquidbounce','wurstclient','sigmaclient','salhack','novoware','gamesenseclient','osirisclient','cosmosclient','sorusclient','azuraclient','doomsdayclient','argonclient','kryptonclient','prestigeclient','198macros','deltaclient','elysianclient','onyxclient','luminaclient','momentumclient','ravenb','uziclient','skidbounceclient','skidcraftclient','backdoored','leuxbackdoor','grasswareclient','allahwareclient','bbcwareclient','arsenicclient','atriumclient','bleachhack','caizmclient','coffeeclient','cranberryclient','evangelion','fdpclient','fogclient','forgehax','huzuniclient','hydrogenclient','kamiblue','konas','kuraclient','lambdaclient','lavahack','mercuryclient','mintclient','miraiclient','nclient','neptunium','ozark','raion','rebirthclient','riftclient','selene','seppuku','silenceclient','sparkclient','swiftclient','tensorclient','tokyoclient','trollhack','vertexclient','vrpos','xulu','zeon','zerotwoclient','zodiac','impactclient','aristois','phobos','rusherhack','futureclient','remix','yasha','zeroday','orchardclient')
 $modules = @('killaura','crystalaura','anchor aura','bed aura','scaffold','speedhack','flyhack','reachhack','hitboxexpand','playeresp','xrayhack','autoclicker','aimassist','silentaim','triggerbot','autototem','autopot','autocrystal','autanchor','autofirework','elytraswap','nuker','packetfly','velocity','noslow','fastplace','selfdestruct','backdoor','tokenlogger','sessionstealer','discordtoken')
-$allTerms = @($clients + $modules | Where-Object { $_ -and $_ -notmatch '^coffe e$' } | Sort-Object -Unique)
+$allTerms = @($clients + $modules | Where-Object { $_ -and $_ -notmatch '^(uzi|argon|delta|krypton|lambda|rift|sigma|future|impact|coffee|mint|spark|swift|tensor|orchard)$' } | Sort-Object -Unique)
+$strongPatterns = @(
+    '(?i)mete(orclient)?','(?i)vape(v4|lite)?','(?i)liquidbounce','(?i)wurst(client)?','(?i)rusherhack','(?i)doomsday(client)?','(?i)198macros','(?i)backdoored','(?i)leuxbackdoor','(?i)skidbounce','(?i)bleachhack','(?i)forgehax','(?i)kamiblue','(?i)phobos','(?i)novoware','(?i)salhack','(?i)zeroday','(?i)orchard(client)?'
+)
 
 Write-Host 'ScreenshareScanner - Minecraft forensic scan' -ForegroundColor Cyan
 $procs = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^javaw?\.exe$' -and $_.CommandLine -match '(?i)minecraft|\.minecraft|fabric|forge' })
@@ -40,15 +44,18 @@ $modsDisplay = if ($ModsPath) { [IO.Path]::GetFullPath($ModsPath) } else { '' }
 
 function Scan-File([IO.FileInfo]$File) {
     try {
-        $zip = [IO.Compression.ZipFile]::OpenRead($File.FullName)
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($File.FullName)
+        $fileHits = New-Object System.Collections.Generic.List[string]
         foreach ($e in $zip.Entries) {
             if ($e.Length -gt 25MB) { continue }
             $buf = New-Object IO.MemoryStream; $e.Open().CopyTo($buf); $text = Get-TextFromBytes $buf.ToArray(); $buf.Dispose()
-            foreach ($term in $allTerms) { if ($text.IndexOf($term,[StringComparison]::OrdinalIgnoreCase) -ge 0) { Add-Finding 'CHEAT_STRING_ON_DISK' Detection Disk 'Suspicious Minecraft string in JAR' "$term found in $($File.Name) ($($e.FullName))" @{file=$File.FullName;entry=$e.FullName;term=$term}; break } }
+            foreach ($pattern in $strongPatterns) { $m=[regex]::Match($text,$pattern); if($m.Success -and $fileHits -notcontains $m.Value){ [void]$fileHits.Add($m.Value) } }
+            foreach ($term in $allTerms) { if ($text.IndexOf($term,[StringComparison]::OrdinalIgnoreCase) -ge 0 -and $fileHits -notcontains $term) { [void]$fileHits.Add($term) } }
             if ($text -match 'Class\.forName|Method\.invoke|System\.load(?:Library)?|java/lang/Runtime') { Add-Finding 'OBFUSCATION_OR_LOADER_ON_DISK' Warning Disk 'Loader or reflective code detected' "Suspicious runtime-loading/reflection marker in $($File.Name)" @{file=$File.FullName;entry=$e.FullName} }
             if ($text -match '(?i)[A-Za-z0-9+/]{60,}={0,2}') { Add-Finding 'OBFUSCATED_STRING_ON_DISK' Warning Disk 'Long Base64-like string detected' "Potential encoded payload in $($File.Name)" @{file=$File.FullName;entry=$e.FullName} }
         }
         $zip.Dispose()
+        if ($fileHits.Count -gt 0) { Add-Finding 'CHEAT_STRING_ON_DISK' Detection Disk 'Strong cheat/client evidence in JAR' "$($fileHits -join ', ') found in $($File.Name)." @{file=$File.FullName;terms=@($fileHits)} }
     } catch { Add-Finding 'UNREADABLE_JAR' Warning Disk 'JAR could not be inspected' "$($File.Name): $($_.Exception.Message)" @{file=$File.FullName} }
 }
 
