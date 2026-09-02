@@ -90,12 +90,36 @@ function Scan-JavaMemory {
     try {
         Write-Host "Reading up to 768 MB of readable Java memory (4 MB chunks, 45-second limit)..." -ForegroundColor DarkGray
         $hits = [MagiciansRevealNativeMemory]::Scan($ProcessId, [string[]]$cheatStrings, 512, 768, 45)
-        foreach ($hit in $hits) {
+        $clientHits = @($hits | Where-Object { $suspiciousPatterns -contains $_ })
+        $genericHits = @($hits | Where-Object { $suspiciousPatterns -notcontains $_ })
+        foreach ($hit in $clientHits) {
             Add-Finding -Tier "Detection" -Category "Process Memory" -Title "Signature Found in Java Memory" `
-                -Message "'$hit' found in readable memory of PID $ProcessId" -Evidence @{PID=$ProcessId; String=$hit}
+                -Message "Client signature '$hit' found in readable memory of PID $ProcessId" -Evidence @{PID=$ProcessId; String=$hit; Classification="Client"}
+        }
+        foreach ($hit in $genericHits) {
+            Add-Finding -Tier "Detection" -Category "Process Memory" -Title "Generic Cheat Module in Java Memory" `
+                -Message "Generic signature '$hit' found in readable memory of PID $ProcessId" -Evidence @{PID=$ProcessId; String=$hit; Classification="Generic"}
         }
         if ($hits.Count -eq 0) { Write-Host "No configured signatures found in readable memory." -ForegroundColor Yellow }
     } catch { Write-Host "Memory scan failed for PID ${ProcessId}: $($_.Exception.Message)" -ForegroundColor Red }
+}
+
+function Scan-AllJavaMemory {
+    $java = Get-Process -Name java,javaw -ErrorAction SilentlyContinue
+    if (-not $java) { Write-Host "CLEAN: No active java.exe/javaw.exe processes found." -ForegroundColor Green; return }
+    Write-Host "Java memory targets: $($java.Count)" -ForegroundColor Cyan
+    foreach ($p in $java) {
+        $created = $null; $cmd = ''
+        try {
+            $ci = Get-CimInstance Win32_Process -Filter "ProcessId = $($p.Id)" -ErrorAction SilentlyContinue
+            $cmd = [string]$ci.CommandLine
+            if ($ci.CreationDate) { $created = [Management.ManagementDateTimeConverter]::ToDateTime($ci.CreationDate) }
+        } catch {}
+        $uptime = if ($created) { ((Get-Date) - $created).ToString('dd\.hh\:mm\:ss') } else { 'unknown' }
+        Write-Host "PID $($p.Id) | $($p.ProcessName) | Started: $created | Uptime: $uptime" -ForegroundColor White
+        Add-Finding -Tier "Info" -Category "Java Process" -Title "Java Scan Target" -Message "PID $($p.Id), $($p.ProcessName), uptime $uptime" -Evidence @{PID=$p.Id; Startup=$created; Uptime=$uptime; CommandLine=$cmd}
+        Scan-JavaMemory -ProcessId $p.Id
+    }
 }
 
 function Test-Admin {
@@ -579,7 +603,6 @@ function Scan-MinecraftUniverse {
         Write-Host "  PID $($target.PID) | $($target.Process) | Active: $($target.Active)" -ForegroundColor White
         Add-Finding -Tier "Info" -Category "Minecraft Session" -Title "Active Minecraft Process" `
             -Message "Minecraft JVM PID $($target.PID) is active." -Evidence @{PID=$target.PID; Process=$target.Process; Active=$target.Active}
-        Scan-JavaMemory -ProcessId $target.PID
         # Do not treat the complete command line as a filesystem path.
         if ($target.CommandLine -match '(?i)-gameDir\s+"([^"]+)"') {
             $gameDir = $Matches[1]
@@ -705,6 +728,7 @@ do {
         }
         "2" {
             Scan-System
+            Scan-AllJavaMemory
             Scan-MinecraftUniverse
             Read-Host "Press Enter to continue"
         }
