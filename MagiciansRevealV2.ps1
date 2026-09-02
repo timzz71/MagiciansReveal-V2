@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-    MagiciansReveal v5.0 – Professional Minecraft Cheat Forensic Scanner
+    MagiciansReveal v2.0 – Professional Minecraft Cheat Forensic Scanner
 .DESCRIPTION
     Stable high-signal detection of cheats, residual artifacts, self-destruct traces,
     DNS activity, JVM injection and suspicious mods.
 .AUTHOR
     Tim Cheese
 .VERSION
-    5.0.0
+    2.0.0
 #>
 
 #region Init
@@ -26,7 +26,7 @@ function Write-Banner {
     Write-Host "  ║                   M A G I C I A N S   R E V E A L                    ║" -ForegroundColor Yellow
     Write-Host "  ║                                                                      ║" -ForegroundColor DarkYellow
     Write-Host "  ║                Professional Cheat Forensic Scanner                   ║" -ForegroundColor White
-    Write-Host "  ║                              v5.0                                    ║" -ForegroundColor DarkGray
+    Write-Host "  ║                              V2.0                                    ║" -ForegroundColor DarkGray
     Write-Host "  ║                                                                      ║" -ForegroundColor DarkYellow
     Write-Host "  ╚══════════════════════════════════════════════════════════════════════╝" -ForegroundColor DarkYellow
     Write-Host ""
@@ -402,7 +402,7 @@ do {
                 $base = "MagiciansReveal_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
                 $script:Findings | ConvertTo-Json -Depth 5 | Out-File "$base.json" -Encoding utf8
 
-                $txt = "Magicians Reveal v5.0 Report`n" + ("=" * 50) + "`n`n"
+                $txt = "Magicians Reveal v2.0 Report`n" + ("=" * 50) + "`n`n"
                 foreach ($f in $script:Findings) {
                     $txt += "[$($f.Severity)] $($f.Title)`n  $($f.Details)`n`n"
                 }
