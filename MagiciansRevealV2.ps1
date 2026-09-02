@@ -1,16 +1,16 @@
 <#
 .SYNOPSIS
-    MagiciansRevealV2 – Minecraft Cheat Forensic Scanner (Ultimate GUI Edition)
+    MagiciansRevealV2 – Minecraft Cheat Forensic Scanner (Ultimate GUI)
 .DESCRIPTION
-    Self‑contained PowerShell script with a rich animated WPF GUI.
+    Self‑contained PowerShell script that compiles to an animated GUI executable.
     Detects cheat clients using cheat‑specific signatures – zero false positives.
 .AUTHOR
     Tim$erz
 .VERSION
-    2.1.0
+    2.1.1
 #>
 
-#region Auto‑Compile to EXE (only if running as .ps1)
+#region Auto‑Compile to EXE
 if ($MyInvocation.MyCommand.Path -match '\.ps1$') {
     $exePath = $MyInvocation.MyCommand.Path -replace '\.ps1$', '.exe'
     if (-not (Test-Path $exePath)) {
@@ -20,7 +20,7 @@ if ($MyInvocation.MyCommand.Path -match '\.ps1$') {
         }
         Import-Module ps2exe -Force
         ps2exe -InputFile $MyInvocation.MyCommand.Path -OutputFile $exePath `
-               -Title "MagiciansRevealV2" -Version "2.1.0" -Company "Tim`$erz" `
+               -Title "MagiciansRevealV2" -Version "2.1.1" -Company "Tim`$erz" `
                -Description "Minecraft Cheat Scanner" -NoConsole -ErrorAction SilentlyContinue
         if (Test-Path $exePath) {
             Write-Host "EXE created: $exePath" -ForegroundColor Green
@@ -36,7 +36,7 @@ if ($MyInvocation.MyCommand.Path -match '\.ps1$') {
 }
 #endregion
 
-#region GUI (WPF) – NO x:Class, FULL animations
+#region GUI – NO x:Class, fully dynamic XAML
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms
 
 $xaml = @'
@@ -48,9 +48,7 @@ $xaml = @'
         Background="#1A1A2E" ResizeMode="NoResize"
         AllowsTransparency="True" WindowStyle="None">
     <Window.Resources>
-        <!-- Glow effect -->
         <DropShadowEffect x:Key="Glow" Color="#6A5ACD" BlurRadius="15" ShadowDepth="0"/>
-        <!-- Gradient brushes -->
         <LinearGradientBrush x:Key="TitleGrad" StartPoint="0,0" EndPoint="1,0">
             <GradientStop Color="#6A5ACD" Offset="0"/>
             <GradientStop Color="#FF6B6B" Offset="0.5"/>
@@ -60,7 +58,6 @@ $xaml = @'
             <GradientStop Color="#6A5ACD" Offset="0"/>
             <GradientStop Color="#8B5CF6" Offset="1"/>
         </LinearGradientBrush>
-        <!-- Animations -->
         <Storyboard x:Key="FadeIn" RepeatBehavior="Forever" AutoReverse="True">
             <DoubleAnimation Storyboard.TargetName="TitleText" Storyboard.TargetProperty="Opacity" From="0.7" To="1" Duration="0:0:1.5"/>
         </Storyboard>
@@ -75,7 +72,6 @@ $xaml = @'
             <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.3"/>
         </Storyboard>
     </Window.Resources>
-
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="50"/>
@@ -83,14 +79,10 @@ $xaml = @'
             <RowDefinition Height="50"/>
         </Grid.RowDefinitions>
 
-        <!-- Title Bar with acrylic effect -->
+        <!-- Title Bar -->
         <Border Grid.Row="0" Background="#2A2A3A" CornerRadius="0,0,15,15" Effect="{StaticResource Glow}">
             <Grid>
-                <TextBlock x:Name="TitleText" Text="✨ MagiciansRevealV2" FontSize="22" FontWeight="Bold" Foreground="{StaticResource TitleGrad}" VerticalAlignment="Center" Margin="15,0,0,0">
-                    <TextBlock.RenderTransform>
-                        <ScaleTransform ScaleX="1" ScaleY="1"/>
-                    </TextBlock.RenderTransform>
-                </TextBlock>
+                <TextBlock x:Name="TitleText" Text="✨ MagiciansRevealV2" FontSize="22" FontWeight="Bold" Foreground="{StaticResource TitleGrad}" VerticalAlignment="Center" Margin="15,0,0,0"/>
                 <Button x:Name="CloseButton" Content="✕" Background="Transparent" BorderThickness="0" Foreground="White" FontSize="18" HorizontalAlignment="Right" Margin="0,0,15,0" Cursor="Hand"/>
             </Grid>
         </Border>
@@ -136,21 +128,10 @@ $xaml = @'
                     <ProgressBar x:Name="ProgressBar" Height="22" Foreground="{StaticResource ButtonGrad}" Background="#333" Margin="0,5,0,0" Value="0" Minimum="0" Maximum="100"/>
                 </StackPanel>
 
-                <!-- Scan Button with glow -->
-                <Button x:Name="ScanButton" Content="🚀  START SCAN" FontSize="20" FontWeight="Bold" Background="{StaticResource ButtonGrad}" Foreground="White" BorderThickness="0" Height="55" Cursor="Hand" Effect="{StaticResource Glow}">
-                    <Button.Triggers>
-                        <EventTrigger RoutedEvent="Button.MouseEnter">
-                            <BeginStoryboard Storyboard="{StaticResource PulseGlow}"/>
-                        </EventTrigger>
-                        <EventTrigger RoutedEvent="Button.MouseLeave">
-                            <BeginStoryboard>
-                                <DoubleAnimation Storyboard.TargetName="ScanButton" Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
-                            </BeginStoryboard>
-                        </EventTrigger>
-                    </Button.Triggers>
-                </Button>
+                <!-- Scan Button -->
+                <Button x:Name="ScanButton" Content="🚀  START SCAN" FontSize="20" FontWeight="Bold" Background="{StaticResource ButtonGrad}" Foreground="White" BorderThickness="0" Height="55" Cursor="Hand" Effect="{StaticResource Glow}"/>
 
-                <!-- Results List with slide‑in animation -->
+                <!-- Results List -->
                 <ListBox x:Name="ResultsList" Margin="0,15,0,0" Height="200" Background="#1E1E30" Foreground="White" BorderBrush="#444" FontFamily="Consolas" FontSize="12">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
@@ -177,10 +158,15 @@ $xaml = @'
 '@
 
 # Load XAML
-$xmlReader = New-Object System.Xml.XmlNodeReader ([xml]$xaml)
-$window = [Windows.Markup.XamlReader]::Load($xmlReader)
+try {
+    $xmlReader = New-Object System.Xml.XmlNodeReader ([xml]$xaml)
+    $window = [Windows.Markup.XamlReader]::Load($xmlReader)
+} catch {
+    [System.Windows.MessageBox]::Show("XAML loading failed: $_", "Error", "OK", "Error")
+    exit
+}
 
-# Get controls
+# Find controls
 $MinecraftDirBox = $window.FindName("MinecraftDirBox")
 $OutputDirBox = $window.FindName("OutputDirBox")
 $StatusText = $window.FindName("StatusText")
@@ -193,27 +179,24 @@ $BrowseMinecraftButton = $window.FindName("BrowseMinecraftButton")
 $BrowseOutputButton = $window.FindName("BrowseOutputButton")
 $MarqueeTransform = $window.FindName("MarqueeTransform")
 
-# Start marquee animation
-$marqueeStory = $window.Resources["Marquee"]
-if ($marqueeStory) { $marqueeStory.Begin() }
+# Start marquee
+if ($window.Resources["Marquee"]) { $window.BeginStoryboard($window.Resources["Marquee"]) }
 
-# Events
-$window.AddHandler([System.Windows.Window]::MouseLeftButtonDownEvent, { $window.DragMove() })
-$CloseButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, { $window.Close() })
+# Event bindings – correct AddHandler (event, delegate)
+$window.AddHandler([System.Windows.Window]::MouseLeftButtonDownEvent, [System.Windows.Input.MouseButtonEventHandler]{ $window.DragMove() })
+$CloseButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, [System.Windows.RoutedEventHandler]{ $window.Close() })
+
+# Browse buttons
 $BrowseMinecraftButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
     $folder = New-Object System.Windows.Forms.FolderBrowserDialog
-    if ($folder.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-        $MinecraftDirBox.Text = $folder.SelectedPath
-    }
+    if ($folder.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $MinecraftDirBox.Text = $folder.SelectedPath }
 })
 $BrowseOutputButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
     $folder = New-Object System.Windows.Forms.FolderBrowserDialog
-    if ($folder.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-        $OutputDirBox.Text = $folder.SelectedPath
-    }
+    if ($folder.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $OutputDirBox.Text = $folder.SelectedPath }
 })
 
-#region Full Signature Database (Zero False Positives) – same as before
+# ---- Signature Database (Zero False Positives) ----
 $cheatClientNames = @(
     "Vape","VapeV4","VapeLite","VapeClient",
     "Meteor","MeteorClient",
@@ -452,9 +435,8 @@ $fullwidthPatterns = @(
     "’╝┴’ĮÆ’Įē’Įć’Įć’Įģ’ĮÆ’╝▓’ĮÅ’Įō’ĮÅ’Įā’Įē’Įģ’Įä",
     "’╝’ĮĢ’Įł’ĮŠ’╝ī’Įł’Įä’Įē’ĮŠ"
 )
-#endregion
 
-#region Scan Functions – identical to previous, but with animations added to results
+# ---- Scan functions ----
 $findings = @()
 function Add-Finding {
     param($Tier, $Category, $Title, $Message, [hashtable]$Evidence = @{})
@@ -471,13 +453,12 @@ function Add-Finding {
     $ResultsList.Dispatcher.Invoke({
         $item = @{ Tier = $Tier; Title = $Title; Message = $Message; Color = $color }
         $ResultsList.Items.Add($item)
-        # Trigger slide‑in animation on the new item
+        # Slide‑in animation
         $container = $ResultsList.ItemContainerGenerator.ContainerFromIndex($ResultsList.Items.Count - 1)
-        if ($container) {
+        if ($container -and $window.Resources["ResultSlideIn"]) {
             $container.RenderTransform = [System.Windows.Media.ScaleTransform]::new(0.8, 1)
             $container.Opacity = 0
-            $slideIn = $window.Resources["ResultSlideIn"]
-            if ($slideIn) { $container.BeginStoryboard($slideIn) }
+            $container.BeginStoryboard($window.Resources["ResultSlideIn"])
         }
         $ResultsList.ScrollIntoView($ResultsList.Items[$ResultsList.Items.Count - 1])
     })
@@ -613,9 +594,8 @@ function Scan-EventLogs {
         } catch {}
     }
 }
-#endregion
 
-#region Scan Button
+# ---- Scan Button Click ----
 $ScanButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
     $findings = @()
     $ResultsList.Items.Clear()
@@ -650,9 +630,8 @@ $ScanButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
     $script:lastFindings = $findings
     $script:outputDir = $outputDir
 })
-#endregion
 
-#region Export Button
+# ---- Export Button Click ----
 $ExportButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
     if (-not $script:lastFindings) { return }
     $report = @{
@@ -679,10 +658,7 @@ $ExportButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
 
     [System.Windows.MessageBox]::Show("Reports saved to $($script:outputDir)", "Export Complete", "OK", "Information")
 })
-#endregion
 
-# Start GUI with fade‑in
-$fadeIn = $window.Resources["FadeIn"]
-if ($fadeIn) { $window.BeginStoryboard($fadeIn) }
+# Start GUI
+if ($window.Resources["FadeIn"]) { $window.BeginStoryboard($window.Resources["FadeIn"]) }
 $window.ShowDialog() | Out-Null
-#endregion
