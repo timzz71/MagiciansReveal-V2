@@ -7,7 +7,7 @@
 .AUTHOR
     Tim$erz
 .VERSION
-    2.1.2
+    2.1.3
 #>
 
 #region Auto‑Compile to EXE
@@ -20,7 +20,7 @@ if ($MyInvocation.MyCommand.Path -match '\.ps1$') {
         }
         Import-Module ps2exe -Force
         ps2exe -InputFile $MyInvocation.MyCommand.Path -OutputFile $exePath `
-               -Title "MagiciansRevealV2" -Version "2.1.2" -Company "Tim`$erz" `
+               -Title "MagiciansRevealV2" -Version "2.1.3" -Company "Tim`$erz" `
                -Description "Minecraft Cheat Scanner" -NoConsole -ErrorAction SilentlyContinue
         if (Test-Path $exePath) {
             Write-Host "EXE created: $exePath" -ForegroundColor Green
@@ -36,7 +36,7 @@ if ($MyInvocation.MyCommand.Path -match '\.ps1$') {
 }
 #endregion
 
-#region GUI – NO x:Class, all events via .Add_EventName()
+#region GUI – NO x:Class, NO CornerRadius on GroupBox
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms
 
 $xaml = @'
@@ -104,8 +104,8 @@ $xaml = @'
                     </Canvas>
                 </Viewbox>
 
-                <!-- Scan Directory -->
-                <GroupBox Header="🎯 Scan Target" Foreground="White" BorderBrush="#444" Margin="0,0,0,15" Background="#25253A" CornerRadius="10">
+                <!-- Scan Directory – NO CornerRadius -->
+                <GroupBox Header="🎯 Scan Target" Foreground="White" BorderBrush="#444" Margin="0,0,0,15" Background="#25253A">
                     <StackPanel Orientation="Horizontal" Margin="10">
                         <TextBlock Text="Minecraft Directory:" Foreground="White" VerticalAlignment="Center" Margin="0,0,10,0"/>
                         <TextBox x:Name="MinecraftDirBox" Text="$env:APPDATA\.minecraft" Width="320" Foreground="White" Background="#1E1E30" BorderBrush="#555"/>
@@ -113,8 +113,8 @@ $xaml = @'
                     </StackPanel>
                 </GroupBox>
 
-                <!-- Output Directory -->
-                <GroupBox Header="📁 Report Output" Foreground="White" BorderBrush="#444" Margin="0,0,0,15" Background="#25253A" CornerRadius="10">
+                <!-- Output Directory – NO CornerRadius -->
+                <GroupBox Header="📁 Report Output" Foreground="White" BorderBrush="#444" Margin="0,0,0,15" Background="#25253A">
                     <StackPanel Orientation="Horizontal" Margin="10">
                         <TextBlock Text="Save Reports To:" Foreground="White" VerticalAlignment="Center" Margin="0,0,10,0"/>
                         <TextBox x:Name="OutputDirBox" Text="." Width="320" Foreground="White" Background="#1E1E30" BorderBrush="#555"/>
@@ -180,11 +180,8 @@ $BrowseOutputButton = $window.FindName("BrowseOutputButton")
 $MarqueeTransform = $window.FindName("MarqueeTransform")
 
 # ---- Event bindings using .Add_EventName() ----
-# Window drag
 $window.Add_MouseLeftButtonDown({ $window.DragMove() })
-# Close
 $CloseButton.Add_Click({ $window.Close() })
-# Browse buttons
 $BrowseMinecraftButton.Add_Click({
     $folder = New-Object System.Windows.Forms.FolderBrowserDialog
     if ($folder.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $MinecraftDirBox.Text = $folder.SelectedPath }
@@ -194,7 +191,7 @@ $BrowseOutputButton.Add_Click({
     if ($folder.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $OutputDirBox.Text = $folder.SelectedPath }
 })
 
-# Start marquee animation
+# Start marquee
 if ($window.Resources["Marquee"]) { $window.BeginStoryboard($window.Resources["Marquee"]) }
 
 # ---- Signature Database (Zero False Positives) ----
@@ -454,7 +451,6 @@ function Add-Finding {
     $ResultsList.Dispatcher.Invoke({
         $item = @{ Tier = $Tier; Title = $Title; Message = $Message; Color = $color }
         $ResultsList.Items.Add($item)
-        # Slide‑in animation
         $container = $ResultsList.ItemContainerGenerator.ContainerFromIndex($ResultsList.Items.Count - 1)
         if ($container -and $window.Resources["ResultSlideIn"]) {
             $container.RenderTransform = [System.Windows.Media.ScaleTransform]::new(0.8, 1)
@@ -596,7 +592,7 @@ function Scan-EventLogs {
     }
 }
 
-# ---- Scan Button Click ----
+# ---- Scan Button ----
 $ScanButton.Add_Click({
     $findings = @()
     $ResultsList.Items.Clear()
@@ -632,7 +628,7 @@ $ScanButton.Add_Click({
     $script:outputDir = $outputDir
 })
 
-# ---- Export Button Click ----
+# ---- Export Button ----
 $ExportButton.Add_Click({
     if (-not $script:lastFindings) { return }
     $report = @{
@@ -663,3 +659,4 @@ $ExportButton.Add_Click({
 # Start GUI with fade‑in
 if ($window.Resources["FadeIn"]) { $window.BeginStoryboard($window.Resources["FadeIn"]) }
 $window.ShowDialog() | Out-Null
+#endregion
