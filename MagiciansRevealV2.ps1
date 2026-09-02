@@ -42,16 +42,15 @@ if ($MyInvocation.MyCommand.Path -match '\.ps1$') {
 #region GUI Application (WPF) – runs only in EXE mode
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms
 
-# XAML for the main window (dark theme, fade‑in, hover animations)
+# XAML for the main window (dark theme, fade‑in, hover animations) – no x:Class or inline events
 $xaml = @'
-<Window x:Class="MagiciansRevealV2.MainWindow"
+<Window
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="MagiciansRevealV2" Height="620" Width="840"
         WindowStartupLocation="CenterScreen"
         Background="#1E1E1E" ResizeMode="NoResize"
-        AllowsTransparency="True" WindowStyle="None"
-        MouseLeftButtonDown="Window_MouseDown">
+        AllowsTransparency="True" WindowStyle="None">
     <Window.Resources>
         <Storyboard x:Key="FadeIn">
             <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.8"/>
@@ -74,7 +73,7 @@ $xaml = @'
         <Border Grid.Row="0" Background="#2A2A2A">
             <Grid>
                 <TextBlock Text="MagiciansRevealV2" FontSize="18" FontWeight="Bold" Foreground="#6A5ACD" VerticalAlignment="Center" Margin="10,0,0,0"/>
-                <Button Content="✕" Background="Transparent" BorderThickness="0" Foreground="White" FontSize="16" HorizontalAlignment="Right" Margin="0,0,10,0" Cursor="Hand" Click="CloseButton_Click"/>
+                <Button x:Name="CloseButton" Content="✕" Background="Transparent" BorderThickness="0" Foreground="White" FontSize="16" HorizontalAlignment="Right" Margin="0,0,10,0" Cursor="Hand"/>
             </Grid>
         </Border>
 
@@ -89,7 +88,7 @@ $xaml = @'
                     <StackPanel Orientation="Horizontal" Margin="10">
                         <TextBlock Text="Minecraft Directory:" Foreground="White" VerticalAlignment="Center" Margin="0,0,10,0"/>
                         <TextBox x:Name="MinecraftDirBox" Text="$env:APPDATA\.minecraft" Width="300" Foreground="White" Background="#2A2A2A" BorderBrush="#444"/>
-                        <Button Content="Browse" Width="80" Margin="10,0,0,0" Background="#3A3A3A" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BrowseButton_Click"/>
+                        <Button x:Name="BrowseMinecraftButton" Content="Browse" Width="80" Margin="10,0,0,0" Background="#3A3A3A" Foreground="White" BorderThickness="0" Cursor="Hand"/>
                     </StackPanel>
                 </GroupBox>
 
@@ -98,7 +97,7 @@ $xaml = @'
                     <StackPanel Orientation="Horizontal" Margin="10">
                         <TextBlock Text="Save Reports To:" Foreground="White" VerticalAlignment="Center" Margin="0,0,10,0"/>
                         <TextBox x:Name="OutputDirBox" Text="." Width="300" Foreground="White" Background="#2A2A2A" BorderBrush="#444"/>
-                        <Button Content="Browse" Width="80" Margin="10,0,0,0" Background="#3A3A3A" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BrowseOutput_Click"/>
+                        <Button x:Name="BrowseOutputButton" Content="Browse" Width="80" Margin="10,0,0,0" Background="#3A3A3A" Foreground="White" BorderThickness="0" Cursor="Hand"/>
                     </StackPanel>
                 </GroupBox>
 
@@ -109,7 +108,7 @@ $xaml = @'
                 </StackPanel>
 
                 <!-- Scan Button -->
-                <Button x:Name="ScanButton" Content="🔍  Start Scan" FontSize="18" FontWeight="Bold" Background="#6A5ACD" Foreground="White" BorderThickness="0" Height="50" Cursor="Hand" Click="ScanButton_Click">
+                <Button x:Name="ScanButton" Content="🔍  Start Scan" FontSize="18" FontWeight="Bold" Background="#6A5ACD" Foreground="White" BorderThickness="0" Height="50" Cursor="Hand">
                     <Button.Triggers>
                         <EventTrigger RoutedEvent="Button.MouseEnter">
                             <BeginStoryboard Storyboard="{StaticResource ButtonHover}"/>
@@ -134,7 +133,7 @@ $xaml = @'
                 </ListBox>
 
                 <!-- Export -->
-                <Button x:Name="ExportButton" Content="📄  Export Report" FontSize="14" Background="#3A3A3A" Foreground="White" BorderThickness="0" Height="40" Margin="0,10,0,0" Cursor="Hand" IsEnabled="False" Click="ExportButton_Click"/>
+                <Button x:Name="ExportButton" Content="📄  Export Report" FontSize="14" Background="#3A3A3A" Foreground="White" BorderThickness="0" Height="40" Margin="0,10,0,0" Cursor="Hand" IsEnabled="False"/>
             </StackPanel>
         </ScrollViewer>
 
@@ -147,7 +146,8 @@ $xaml = @'
 '@
 
 # Load XAML
-$window = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader ([xml]$xaml)))
+$xmlReader = New-Object System.Xml.XmlNodeReader ([xml]$xaml)
+$window = [Windows.Markup.XamlReader]::Load($xmlReader)
 
 # Find controls
 $MinecraftDirBox = $window.FindName("MinecraftDirBox")
@@ -157,22 +157,34 @@ $ProgressBar = $window.FindName("ProgressBar")
 $ResultsList = $window.FindName("ResultsList")
 $ScanButton = $window.FindName("ScanButton")
 $ExportButton = $window.FindName("ExportButton")
+$CloseButton = $window.FindName("CloseButton")
+$BrowseMinecraftButton = $window.FindName("BrowseMinecraftButton")
+$BrowseOutputButton = $window.FindName("BrowseOutputButton")
 
-# Event handlers (defined later)
-$window.AddHandler([System.Windows.Window]::MouseLeftButtonDownEvent, [System.Windows.Input.MouseButtonEventHandler]{ $window.DragMove() })
-$window.AddHandler([System.Windows.Controls.Button]::ClickEvent, [System.Windows.RoutedEventHandler]{ if ($_.Source.Name -eq "CloseButton_Click") { $window.Close() } })
+# ---- Event handlers ----
+# Window drag
+$window.AddHandler([System.Windows.Window]::MouseLeftButtonDownEvent, {
+    $window.DragMove()
+})
+
+# Close button
+$CloseButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
+    $window.Close()
+})
 
 # Browse buttons
-$browseMinecraft = { 
+$BrowseMinecraftButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
     $folder = New-Object System.Windows.Forms.FolderBrowserDialog
-    if ($folder.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $MinecraftDirBox.Text = $folder.SelectedPath }
-}
-$browseOutput = { 
+    if ($folder.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+        $MinecraftDirBox.Text = $folder.SelectedPath
+    }
+})
+$BrowseOutputButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
     $folder = New-Object System.Windows.Forms.FolderBrowserDialog
-    if ($folder.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $OutputDirBox.Text = $folder.SelectedPath }
-}
-$window.FindName("BrowseButton_Click").AddHandler([System.Windows.RoutedEvent]::Click, $browseMinecraft)
-$window.FindName("BrowseOutput_Click").AddHandler([System.Windows.RoutedEvent]::Click, $browseOutput)
+    if ($folder.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+        $OutputDirBox.Text = $folder.SelectedPath
+    }
+})
 
 #region Scan Logic (Zero False Positives)
 $cheatClientNames = @(
@@ -375,7 +387,6 @@ $cheatDomains = @(
     "vertexclient.net","prestigeclient.vip","dqrkis.xyz","orchard.gg"
 )
 
-# Fullwidth obfuscated strings (cheat‑only)
 $fullwidthPatterns = @(
     "’╝Ī’ĮĢ’Įö’ĮÅ’╝Ż’ĮÆ’ĮÖ’Įō’Įö’Įü’Įī",
     "’╝Ī’ĮĢ’Įö’ĮÅ’╝Ī’ĮÄ’Įā’Įł’ĮÅ’ĮÆ",
@@ -429,7 +440,6 @@ function Add-Finding {
         Timestamp = (Get-Date).ToString("o")
         Color     = $color
     }
-    # Update GUI live
     $ResultsList.Dispatcher.Invoke({
         $ResultsList.Items.Add(@{ Tier = $Tier; Title = $Title; Message = $Message; Color = $color })
         $ResultsList.ScrollIntoView($ResultsList.Items[$ResultsList.Items.Count - 1])
@@ -464,26 +474,22 @@ function Scan-FileSystem {
         $content = Get-Content -Path $jar.FullName -Raw -ErrorAction SilentlyContinue
         if (-not $content) { continue }
 
-        # Check client names (case‑insensitive)
         foreach ($client in $cheatClientNames) {
             if ($content -match "\b$client\b") {
                 Add-Finding "Detection" "File System" "Cheat Client Found" "Client name '$client' in $($jar.Name)" @{File=$jar.Name; Client=$client}
                 break
             }
         }
-        # Check package paths
         foreach ($pkg in $cheatPackagePaths) {
             if ($content -match $pkg) {
                 Add-Finding "Detection" "File System" "Cheat Package Path" "Package '$pkg' found in $($jar.Name)" @{File=$jar.Name; Package=$pkg}
             }
         }
-        # Check module names (Warning if alone, Detection if with package)
         foreach ($mod in $cheatModules) {
             if ($content -match "\b$mod\b") {
                 Add-Finding "Warning" "File System" "Cheat Module" "Module '$mod' in $($jar.Name)" @{File=$jar.Name; Module=$mod}
             }
         }
-        # Check fullwidth obfuscated strings (Detection)
         foreach ($fw in $fullwidthPatterns) {
             if ($content -match $fw) {
                 Add-Finding "Detection" "File System" "Fullwidth Obfuscation" "Obfuscated string found in $($jar.Name)" @{File=$jar.Name}
@@ -500,7 +506,6 @@ function Scan-Registry {
             Add-Finding "Detection" "Registry" "Cheat Registry Key" "Key $path exists" @{Key=$path}
         }
     }
-    # Check EnablePrefetcher
     try {
         $prefetch = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters" -Name "EnablePrefetcher" -ErrorAction SilentlyContinue).EnablePrefetcher
         if ($prefetch -eq 0) {
@@ -520,7 +525,6 @@ function Scan-Processes {
                 break
             }
         }
-        # Check JVM arguments
         if ($p.ProcessName -match "javaw|java") {
             try {
                 $cmd = (Get-CimInstance -ClassName Win32_Process -Filter "ProcessId = $($p.Id)" -ErrorAction SilentlyContinue).CommandLine
@@ -575,7 +579,7 @@ function Scan-EventLogs {
 #endregion
 
 #region Scan Button Click
-$scanClick = {
+$ScanButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
     $findings = @()
     $ResultsList.Items.Clear()
     $ExportButton.IsEnabled = $false
@@ -596,7 +600,6 @@ $scanClick = {
     }
     if (-not (Test-Path $outputDir)) { New-Item -ItemType Directory -Path $outputDir -Force | Out-Null }
 
-    # Run scans
     Scan-FileSystem -minecraftDir $minecraftDir
     Scan-Registry
     Scan-Processes
@@ -607,16 +610,13 @@ $scanClick = {
     Update-Status "Scan complete. $($findings.Count) findings." -Progress 100
     $ExportButton.IsEnabled = $true
     $ScanButton.IsEnabled = $true
-
-    # Store findings for export
     $script:lastFindings = $findings
     $script:outputDir = $outputDir
-}
-$window.FindName("ScanButton_Click").AddHandler([System.Windows.RoutedEvent]::Click, $scanClick)
+})
 #endregion
 
 #region Export Button Click
-$exportClick = {
+$ExportButton.AddHandler([System.Windows.Controls.Button]::ClickEvent, {
     if (-not $script:lastFindings) { return }
     $report = @{
         ScanTime = (Get-Date).ToString("o")
@@ -641,11 +641,13 @@ $exportClick = {
     $txt | Out-File -FilePath $txtFile -Encoding utf8
 
     [System.Windows.MessageBox]::Show("Reports saved to $($script:outputDir)", "Export Complete", "OK", "Information")
-}
-$window.FindName("ExportButton_Click").AddHandler([System.Windows.RoutedEvent]::Click, $exportClick)
+})
 #endregion
 
 # Start the GUI with fade‑in animation
-$window.BeginStoryboard($window.Resources["FadeIn"])
+$fadeIn = $window.Resources["FadeIn"]
+if ($fadeIn) {
+    $window.BeginStoryboard($fadeIn)
+}
 $window.ShowDialog() | Out-Null
 #endregion
