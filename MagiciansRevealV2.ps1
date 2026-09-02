@@ -1,21 +1,19 @@
 <#
 .SYNOPSIS
-    MagiciansReveal v2.1 – Professional Minecraft Cheat Forensic Scanner
+    MagiciansReveal v2.2 – Ultimate Minecraft Cheat Forensic Scanner
 .DESCRIPTION
-    Detects injectable cheats, self-destructing clients, obfuscated mods, and residual artifacts.
-    Uses SHA-1 hash verification, 200+ signatures, bypass analysis, obfuscation scoring,
-    JVM runtime inspection, and USN Journal/artifact scanning.
+    High-precision detection of injectable clients, self-destructing cheats, obfuscated mods,
+    residual artifacts and JVM injection. Built for serious screenshare investigations.
 .AUTHOR
     Tim Cheese
 .VERSION
-    2.1.0
+    2.2.0
 #>
 
 #region Initialisation
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 chcp 65001 | Out-Null
-Clear-Host
 
 $Banner = @"
  ███╗   ███╗ █████╗  ██████╗ ██╗ ██████╗██╗ █████╗ ███╗   ██╗███████╗
@@ -37,17 +35,17 @@ function Write-Banner {
     Clear-Host
     Write-Host $Banner -ForegroundColor DarkYellow
     Write-Host ""
-    Write-Host "                Magicians Reveal V2.1" -ForegroundColor White
-    Write-Host "         Professional Cheat Forensic Scanner" -ForegroundColor DarkGray
-    Write-Host ("━" * 76) -ForegroundColor Red
+    Write-Host "                    MAGICIANS REVEAL  v2.2" -ForegroundColor White
+    Write-Host "              Ultimate Cheat Forensic Scanner" -ForegroundColor DarkGray
+    Write-Host ("━" * 78) -ForegroundColor Red
     Write-Host ""
 }
 
 Write-Banner
 
-$IsAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
+$IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $IsAdmin) {
-    Write-Host "  [!] WARNING: Run as Administrator for full features (USN Journal + deep residual scan)" -ForegroundColor Red
+    Write-Host "  [!]  WARNING: Not running as Administrator — USN Journal & deep residual scan limited" -ForegroundColor Red
     Write-Host ""
 }
 #endregion
@@ -56,25 +54,25 @@ if (-not $IsAdmin) {
 function Add-Finding {
     param(
         [string]$Tier,
-        [string]$Category,
         [string]$Title,
         [string]$Message,
+        [string[]]$Details = @(),
         [hashtable]$Evidence = @{}
     )
 
-    $finding = @{
+    $script:Findings += @{
         Tier      = $Tier
-        Category  = $Category
         Title     = $Title
         Message   = $Message
+        Details   = $Details
         Evidence  = $Evidence
         Timestamp = (Get-Date).ToString("o")
     }
-    $script:Findings += $finding
 
     $color = switch ($Tier) {
-        "Suspicious" { "Yellow" }
+        "CRITICAL"   { "Red" }
         "Bypass"     { "Magenta" }
+        "Suspicious" { "Yellow" }
         "Obfuscated" { "Cyan" }
         "JVM"        { "Red" }
         "Residual"   { "DarkYellow" }
@@ -82,28 +80,35 @@ function Add-Finding {
     }
 
     Write-Host ""
-    Write-Host "  ╔══════════════════════════════════════════════════════════════════════════╗" -ForegroundColor $color
-    Write-Host "  ║  [$Tier] $Title" -ForegroundColor $color
-    Write-Host "  ╟──────────────────────────────────────────────────────────────────────────╢" -ForegroundColor DarkGray
+    Write-Host "  ╔════════════════════════════════════════════════════════════════════════════╗" -ForegroundColor $color
+    Write-Host "  ║  [$Tier]  $Title" -ForegroundColor $color
+    Write-Host "  ╟────────────────────────────────────────────────────────────────────────────╢" -ForegroundColor DarkGray
     Write-Host "  ║  $Message" -ForegroundColor White
-    Write-Host "  ╚══════════════════════════════════════════════════════════════════════════╝" -ForegroundColor $color
+
+    if ($Details.Count -gt 0) {
+        Write-Host "  ║" -ForegroundColor DarkGray
+        foreach ($d in $Details) {
+            Write-Host "  ║    →  $d" -ForegroundColor Gray
+        }
+    }
+
+    Write-Host "  ╚════════════════════════════════════════════════════════════════════════════╝" -ForegroundColor $color
 }
 
 function Write-ScanHeader {
     param([string]$Text)
     Write-Host ""
-    Write-Host "  ▶ $Text" -ForegroundColor Cyan
-    Write-Host ("  " + ("─" * 70)) -ForegroundColor DarkGray
+    Write-Host "  ▶  $Text" -ForegroundColor Cyan
+    Write-Host ("  " + ("─" * 72)) -ForegroundColor DarkGray
 }
 
 function Write-ScanSummary {
     param([int]$Flagged, [int]$Total)
-
     Write-Host ""
     if ($Flagged -eq 0) {
-        Write-Host "  ✔ Scan complete — No suspicious / injected mods found ($Total scanned)" -ForegroundColor Green
+        Write-Host "  ✔  CLEAN — No suspicious / injected mods detected  ($Total scanned)" -ForegroundColor Green
     } else {
-        Write-Host "  ⚠ Scan complete — $Flagged flagged item(s) out of $Total scanned" -ForegroundColor Red
+        Write-Host "  ⚠  $Flagged FLAGGED ITEM(S)  out of $Total scanned" -ForegroundColor Red
     }
     Write-Host ""
 }
@@ -232,14 +237,14 @@ $obfuscatorSignatures = @(
     "Binscure","SuperBlaubeere27","Qprotect","Zelix","Stringer","JNIC","Scuti","Smoke"
 )
 
-# Only high-signal bypass indicators (reduced false positives)
+# High-signal only (reduced false positives)
 $bypassPatterns = @(
-    "runtime\.exec","ProcessBuilder","URL\.openStream","HttpURLConnection",
-    "setRequestProperty","-javaagent:","-Xbootclasspath","-agentlib:jdwp","-agentpath:"
+    "runtime\.exec","-javaagent:","-Xbootclasspath","-agentlib:jdwp","-agentpath:",
+    "URL\.openStream","HttpURLConnection","setRequestProperty"
 )
 #endregion
 
-#region Core Analysis Functions
+#region Core Analysis
 function Get-FileSHA1 {
     param([string]$Path)
     try {
@@ -248,18 +253,15 @@ function Get-FileSHA1 {
         $hash = $sha1.ComputeHash($stream)
         $stream.Close()
         return ([System.BitConverter]::ToString($hash) -replace '-','')
-    } catch {
-        return $null
-    }
+    } catch { return $null }
 }
 
 function Check-Modrinth {
     param([string]$Hash)
     try {
-        $url = "https://api.modrinth.com/v2/version_file/$Hash"
-        $resp = Invoke-RestMethod -Uri $url -TimeoutSec 4 -ErrorAction Stop
+        $resp = Invoke-RestMethod -Uri "https://api.modrinth.com/v2/version_file/$Hash" -TimeoutSec 4 -ErrorAction Stop
         if ($resp -and $resp.project_id) {
-            return @{ Verified = $true; Source = "Modrinth"; Name = $resp.project_id }
+            return @{ Verified = $true; Source = "Modrinth" }
         }
     } catch {}
     return $null
@@ -270,23 +272,21 @@ function Analyze-JAR {
 
     $hash = Get-FileSHA1 -Path $FilePath
     $verified = $null
-    if ($hash) {
-        $verified = Check-Modrinth -Hash $hash
-    }
+    if ($hash) { $verified = Check-Modrinth -Hash $hash }
 
-    $patterns = [System.Collections.Generic.HashSet[string]]::new()
-    $strings  = [System.Collections.Generic.HashSet[string]]::new()
-    $fullwidth = [System.Collections.Generic.HashSet[string]]::new()
-    $bypassIndicators = @()
+    $patterns   = [System.Collections.Generic.HashSet[string]]::new()
+    $strings    = [System.Collections.Generic.HashSet[string]]::new()
+    $fullwidth  = [System.Collections.Generic.HashSet[string]]::new()
+    $bypass     = @()
     $obfuscationScore = 0
     $totalClasses = 0
-    $singleLetterClasses = 0
-    $numericClasses = 0
-    $unicodeClasses = 0
-    $fullwidthClasses = 0
-    $japaneseClasses = 0
-    $gibberishClasses = 0
-    $confusionClasses = 0
+    $singleLetter = 0
+    $numeric = 0
+    $unicode = 0
+    $fullwidthCount = 0
+    $japanese = 0
+    $gibberish = 0
+    $confusion = 0
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
 
@@ -295,27 +295,19 @@ function Analyze-JAR {
         foreach ($entry in $archive.Entries) {
             $name = $entry.FullName
 
-            foreach ($m in $patternRegex.Matches($name)) {
-                [void]$patterns.Add($m.Value)
-            }
-
-            foreach ($bp in $bypassPatterns) {
-                if ($name -match $bp) {
-                    $bypassIndicators += $bp
-                }
-            }
+            foreach ($m in $patternRegex.Matches($name)) { [void]$patterns.Add($m.Value) }
+            foreach ($bp in $bypassPatterns) { if ($name -match $bp) { $bypass += $bp } }
 
             if ($name -match '\.class$') {
                 $totalClasses++
                 $base = [System.IO.Path]::GetFileNameWithoutExtension($name)
-
-                if ($base -match '^[A-Za-z]$') { $singleLetterClasses++ }
-                if ($base -match '^[0-9]+$') { $numericClasses++ }
-                if ($base -match '[^\x00-\x7F]') { $unicodeClasses++ }
-                if ($base -match "[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]") { $fullwidthClasses++ }
-                if ($base -match '[\u3040-\u30FF\u4E00-\u9FAF]') { $japaneseClasses++ }
-                if ($base -match '^[bcdfghjklmnpqrstvwxyz]+$' -and $base.Length -gt 3) { $gibberishClasses++ }
-                if ($base -match '^[O0Il1_]{2,}$') { $confusionClasses++ }
+                if ($base -match '^[A-Za-z]$') { $singleLetter++ }
+                if ($base -match '^[0-9]+$') { $numeric++ }
+                if ($base -match '[^\x00-\x7F]') { $unicode++ }
+                if ($base -match "[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]") { $fullwidthCount++ }
+                if ($base -match '[\u3040-\u30FF\u4E00-\u9FAF]') { $japanese++ }
+                if ($base -match '^[bcdfghjklmnpqrstvwxyz]+$' -and $base.Length -gt 3) { $gibberish++ }
+                if ($base -match '^[O0Il1_]{2,}$') { $confusion++ }
             }
 
             if ($name -match '\.(class|json)$' -or $name -match 'MANIFEST\.MF') {
@@ -330,82 +322,47 @@ function Analyze-JAR {
                     $ascii = [System.Text.Encoding]::ASCII.GetString($bytes)
                     $utf8  = [System.Text.Encoding]::UTF8.GetString($bytes)
 
-                    foreach ($m in $patternRegex.Matches($ascii)) {
-                        [void]$patterns.Add($m.Value)
-                    }
-
+                    foreach ($m in $patternRegex.Matches($ascii)) { [void]$patterns.Add($m.Value) }
                     foreach ($s in $cheatStrings) {
-                        if ($ascii.Contains($s) -or $utf8.Contains($s)) {
-                            [void]$strings.Add($s)
-                        }
+                        if ($ascii.Contains($s) -or $utf8.Contains($s)) { [void]$strings.Add($s) }
                     }
-
-                    foreach ($m in $fullwidthRegex.Matches($utf8)) {
-                        [void]$fullwidth.Add($m.Value)
-                    }
-
+                    foreach ($m in $fullwidthRegex.Matches($utf8)) { [void]$fullwidth.Add($m.Value) }
                     foreach ($bp in $bypassPatterns) {
-                        if ($ascii -match $bp -or $utf8 -match $bp) {
-                            $bypassIndicators += $bp
-                        }
+                        if ($ascii -match $bp -or $utf8 -match $bp) { $bypass += $bp }
                     }
                 } catch {}
             }
 
             if ($name -match '\.jar$' -and $name -notmatch '^META-INF/') {
-                $bypassIndicators += "NestedJAR"
+                $bypass += "NestedJAR"
             }
         }
         $archive.Dispose()
-    } catch {
-        return $null
-    }
+    } catch { return $null }
 
     if ($totalClasses -gt 0) {
-        $singleLetterRatio = $singleLetterClasses / $totalClasses
-        $numericRatio      = $numericClasses / $totalClasses
-        $unicodeRatio      = $unicodeClasses / $totalClasses
-        $fullwidthRatio    = $fullwidthClasses / $totalClasses
-        $japaneseRatio     = $japaneseClasses / $totalClasses
-        $gibberishRatio    = $gibberishClasses / $totalClasses
-        $confusionRatio    = $confusionClasses / $totalClasses
-
-        if ($singleLetterRatio -gt 0.5) { $obfuscationScore += 2 }
-        if ($numericRatio -gt 0.3)      { $obfuscationScore += 2 }
-        if ($unicodeRatio -gt 0.2)      { $obfuscationScore += 3 }
-        if ($fullwidthRatio -gt 0.2)    { $obfuscationScore += 3 }
-        if ($japaneseRatio -gt 0.1)     { $obfuscationScore += 4 }
-        if ($gibberishRatio -gt 0.3)    { $obfuscationScore += 2 }
-        if ($confusionRatio -gt 0.2)    { $obfuscationScore += 2 }
+        if (($singleLetter / $totalClasses) -gt 0.5) { $obfuscationScore += 2 }
+        if (($numeric / $totalClasses) -gt 0.3)      { $obfuscationScore += 2 }
+        if (($unicode / $totalClasses) -gt 0.2)      { $obfuscationScore += 3 }
+        if (($fullwidthCount / $totalClasses) -gt 0.2){ $obfuscationScore += 3 }
+        if (($japanese / $totalClasses) -gt 0.1)     { $obfuscationScore += 4 }
+        if (($gibberish / $totalClasses) -gt 0.3)    { $obfuscationScore += 2 }
+        if (($confusion / $totalClasses) -gt 0.2)    { $obfuscationScore += 2 }
 
         foreach ($sig in $obfuscatorSignatures) {
-            if ($name -match $sig) {
-                $obfuscationScore += 5
-                break
-            }
+            if ($name -match $sig) { $obfuscationScore += 5; break }
         }
     }
 
-    $fakeIdentity = ($name -match '(lithium|sodium|phosphor|canvas)\.jar') -and ($patterns.Count -gt 0 -or $strings.Count -gt 0)
-    $nestedJAR = $bypassIndicators -contains "NestedJAR"
-
     return @{
-        Hash              = $hash
-        Verified          = $verified
-        Patterns          = $patterns
-        Strings           = $strings
-        Fullwidth         = $fullwidth
-        BypassIndicators  = $bypassIndicators
-        ObfuscationScore  = $obfuscationScore
-        SingleLetterRatio = if ($totalClasses -gt 0) { $singleLetterClasses / $totalClasses } else { 0 }
-        NumericRatio      = if ($totalClasses -gt 0) { $numericClasses / $totalClasses } else { 0 }
-        UnicodeRatio      = if ($totalClasses -gt 0) { $unicodeClasses / $totalClasses } else { 0 }
-        FullwidthRatio    = if ($totalClasses -gt 0) { $fullwidthClasses / $totalClasses } else { 0 }
-        JapaneseRatio     = if ($totalClasses -gt 0) { $japaneseClasses / $totalClasses } else { 0 }
-        GibberishRatio    = if ($totalClasses -gt 0) { $gibberishClasses / $totalClasses } else { 0 }
-        ConfusionRatio    = if ($totalClasses -gt 0) { $confusionClasses / $totalClasses } else { 0 }
-        FakeIdentity      = $fakeIdentity
-        NestedJAR         = $nestedJAR
+        Hash             = $hash
+        Verified         = $verified
+        Patterns         = $patterns
+        Strings          = $strings
+        Fullwidth        = $fullwidth
+        BypassIndicators = $bypass
+        ObfuscationScore = $obfuscationScore
+        NestedJAR        = ($bypass -contains "NestedJAR")
     }
 }
 #endregion
@@ -425,7 +382,7 @@ function Scan-Mods {
         return
     }
 
-    Write-ScanHeader "Scanning $($jars.Count) mods — only showing flagged / injected findings"
+    Write-ScanHeader "Scanning $($jars.Count) mods — showing only flagged findings + detected strings"
 
     $flagged = 0
     $total = $jars.Count
@@ -433,60 +390,65 @@ function Scan-Mods {
 
     foreach ($jar in $jars) {
         $i++
-        Write-Progress -Activity "Analyzing JARs" -Status $jar.Name -PercentComplete (($i / $total) * 100)
+        Write-Progress -Activity "Deep analyzing JARs" -Status $jar.Name -PercentComplete (($i / $total) * 100)
 
         $result = Analyze-JAR -FilePath $jar.FullName
         if (-not $result) { continue }
+        if ($result.Verified) { continue }   # skip clean verified mods
 
-        # Skip clean / verified mods completely
-        if ($result.Verified) { continue }
+        $hasPatterns  = $result.Patterns.Count -gt 0
+        $hasStrings   = $result.Strings.Count -gt 0
+        $hasFullwidth = $result.Fullwidth.Count -gt 0
+        $hasBypass    = $result.BypassIndicators.Count -gt 0 -or $result.NestedJAR
+        $hasObfuscation = $result.ObfuscationScore -ge 5
 
-        $isFlagged = $false
-
-        if ($result.BypassIndicators.Count -gt 0 -or $result.FakeIdentity -or $result.NestedJAR) {
-            $extra = ""
-            if ($result.FakeIdentity) { $extra += " (Fake identity)" }
-            if ($result.NestedJAR)    { $extra += " (Nested JAR)" }
-
-            Add-Finding -Tier "Bypass" -Category "File System" -Title "Bypass / Injection Detected" `
-                -Message ("$($jar.Name)  →  " + ($result.BypassIndicators -join ', ') + $extra) `
-                -Evidence @{File=$jar.Name; Bypass=$result.BypassIndicators}
-
-            $isFlagged = $true
-        }
-        elseif ($result.ObfuscationScore -ge 5) {
-            Add-Finding -Tier "Obfuscated" -Category "File System" -Title "Heavily Obfuscated Mod" `
-                -Message "$($jar.Name)  →  Score $($result.ObfuscationScore) | Single-letter: $([math]::Round($result.SingleLetterRatio*100))% | Unicode: $([math]::Round($result.UnicodeRatio*100))%" `
-                -Evidence @{File=$jar.Name; ObfuscationScore=$result.ObfuscationScore}
-
-            $isFlagged = $true
-        }
-        elseif ($result.Patterns.Count -gt 0 -or $result.Strings.Count -gt 0 -or $result.Fullwidth.Count -gt 0) {
-            $msgParts = @()
-            if ($result.Patterns.Count -gt 0)  { $msgParts += "Patterns: $($result.Patterns -join ', ')" }
-            if ($result.Strings.Count -gt 0)   { $msgParts += "Strings: $($result.Strings -join ', ')" }
-            if ($result.Fullwidth.Count -gt 0) { $msgParts += "Fullwidth: $($result.Fullwidth -join ', ')" }
-
-            Add-Finding -Tier "Suspicious" -Category "File System" -Title "Cheat-Related Content" `
-                -Message ("$($jar.Name)  →  " + ($msgParts -join ' | ')) `
-                -Evidence @{File=$jar.Name; Patterns=$result.Patterns; Strings=$result.Strings}
-
-            $isFlagged = $true
+        if (-not ($hasPatterns -or $hasStrings -or $hasFullwidth -or $hasBypass -or $hasObfuscation)) {
+            continue
         }
 
-        if ($isFlagged) { $flagged++ }
+        $flagged++
+        $details = @()
+
+        if ($hasStrings) {
+            $details += "CHEAT STRINGS : $($result.Strings -join ', ')"
+        }
+        if ($hasPatterns) {
+            $details += "PATTERNS      : $($result.Patterns -join ', ')"
+        }
+        if ($hasFullwidth) {
+            $details += "FULLWIDTH     : $($result.Fullwidth -join ', ')"
+        }
+        if ($hasBypass) {
+            $details += "BYPASS / INJECT: $($result.BypassIndicators -join ', ')"
+            if ($result.NestedJAR) { $details += "NESTED JAR DETECTED" }
+        }
+        if ($hasObfuscation) {
+            $details += "OBFUSCATION SCORE: $($result.ObfuscationScore)"
+        }
+
+        $tier = "Suspicious"
+        if ($hasBypass -or $hasObfuscation) { $tier = "Bypass" }
+        if ($hasStrings -and ($hasBypass -or $hasObfuscation)) { $tier = "CRITICAL" }
+
+        Add-Finding -Tier $tier -Title $jar.Name -Message "Flagged mod detected" -Details $details `
+            -Evidence @{
+                File     = $jar.Name
+                Strings  = $result.Strings
+                Patterns = $result.Patterns
+                Bypass   = $result.BypassIndicators
+            }
     }
 
-    Write-Progress -Activity "Analyzing JARs" -Completed
+    Write-Progress -Activity "Deep analyzing JARs" -Completed
     Write-ScanSummary -Flagged $flagged -Total $total
 }
 
 function Scan-JVMInjection {
-    Write-ScanHeader "Scanning live Java / JVM processes for injection"
+    Write-ScanHeader "Scanning live Java processes for injection"
 
     $java = Get-Process -Name java,javaw -ErrorAction SilentlyContinue
     if (-not $java) {
-        Write-Host "  ✔ No Java processes running." -ForegroundColor Green
+        Write-Host "  ✔  No Java processes running." -ForegroundColor Green
         return
     }
 
@@ -498,7 +460,6 @@ function Scan-JVMInjection {
             if (-not $cmd) { continue }
 
             $issues = @()
-
             if ($cmd -match '-javaagent:') {
                 $agents = [regex]::Matches($cmd, '-javaagent:(?:"([^"]+)"|([^\s]+))')
                 foreach ($ag in $agents) {
@@ -509,23 +470,21 @@ function Scan-JVMInjection {
                     }
                 }
             }
-
             if ($cmd -match '-Xbootclasspath/p:') { $issues += "Xbootclasspath/p (prepend)" }
             if ($cmd -match '-Xbootclasspath/a:') { $issues += "Xbootclasspath/a (append)" }
             if ($cmd -match '-agentlib:jdwp')     { $issues += "JDWP debug agent" }
             if ($cmd -match '-agentpath:')        { $issues += "Native agentpath" }
 
             if ($issues.Count -gt 0) {
-                Add-Finding -Tier "JVM" -Category "Runtime Injection" -Title "JVM Injection Detected" `
-                    -Message ("PID $($p.Id)  →  " + ($issues -join ' | ')) `
-                    -Evidence @{PID=$p.Id; Flags=$issues}
+                Add-Finding -Tier "JVM" -Title "JVM Injection Detected" `
+                    -Message "PID $($p.Id)" -Details $issues
                 $found++
             }
         } catch {}
     }
 
     if ($found -eq 0) {
-        Write-Host "  ✔ No JVM injection flags found." -ForegroundColor Green
+        Write-Host "  ✔  No JVM injection flags found." -ForegroundColor Green
     }
 }
 
@@ -547,7 +506,7 @@ function Scan-ResidualArtifacts {
             Where-Object {
                 -not $_.PSIsContainer -and
                 $_.LastWriteTime -ge (Get-Date).AddDays(-14) -and
-                $_.Length -le 30MB
+                $_.Length -le 25MB
             }
     }
 
@@ -556,7 +515,7 @@ function Scan-ResidualArtifacts {
     foreach ($file in ($files | Sort-Object FullName -Unique)) {
         $content = $null
         try {
-            if ($file.Length -lt 4MB -and $file.Extension -match '\.(log|txt|json|cfg|properties|xml|yml|yaml)$') {
+            if ($file.Length -lt 3MB -and $file.Extension -match '\.(log|txt|json|cfg|properties|xml|yml|yaml)$') {
                 $content = Get-Content -LiteralPath $file.FullName -Raw -ErrorAction SilentlyContinue
             }
         } catch {}
@@ -564,9 +523,8 @@ function Scan-ResidualArtifacts {
         if ($content) {
             foreach ($s in $cheatStrings) {
                 if ($content -match [regex]::Escape($s)) {
-                    Add-Finding -Tier "Residual" -Category "Residual Artifact" -Title "Cheat String Found in Residual File" `
-                        -Message "String '$s'  →  $($file.FullName)" `
-                        -Evidence @{File=$file.FullName; String=$s}
+                    Add-Finding -Tier "Residual" -Title "Cheat String in Residual File" `
+                        -Message $file.FullName -Details @("String: $s")
                     $found++
                     break
                 }
@@ -575,27 +533,25 @@ function Scan-ResidualArtifacts {
 
         foreach ($sig in $cheatPatterns) {
             if ($file.Name -match [regex]::Escape($sig)) {
-                Add-Finding -Tier "Residual" -Category "Residual Artifact" -Title "Suspicious Residual Filename" `
-                    -Message "Filename matches signature '$sig'  →  $($file.Name)" `
-                    -Evidence @{File=$file.FullName; Signature=$sig}
+                Add-Finding -Tier "Residual" -Title "Suspicious Residual Filename" `
+                    -Message $file.Name -Details @("Signature: $sig")
                 $found++
                 break
             }
         }
     }
 
-    # USN Journal (self-destruct)
+    # USN Journal
     try {
-        $usn = fsutil usn readjournal C: 2>$null | Select-String -Pattern "File Name.*\.jar" -Context 3,0
+        $usn = fsutil usn readjournal C: 2>$null | Select-String -Pattern "File Name.*\.jar" -Context 2,0
         if ($usn) {
             foreach ($line in $usn) {
                 $fileName = ($line -split "File Name\s+:\s+")[1].Trim()
                 if ($fileName -match '\.jar$') {
                     foreach ($sig in $cheatPatterns) {
                         if ($fileName -match [regex]::Escape($sig)) {
-                            Add-Finding -Tier "Residual" -Category "USN Journal" -Title "Deleted / Renamed Cheat JAR (Self-Destruct Trace)" `
-                                -Message "USN Journal → '$fileName' (signature: $sig)" `
-                                -Evidence @{File=$fileName; Signature=$sig}
+                            Add-Finding -Tier "Residual" -Title "Self-Destruct Trace (USN Journal)" `
+                                -Message $fileName -Details @("Signature: $sig")
                             $found++
                             break
                         }
@@ -606,24 +562,24 @@ function Scan-ResidualArtifacts {
     } catch {}
 
     if ($found -eq 0) {
-        Write-Host "  ✔ No residual / self-destruct traces found." -ForegroundColor Green
+        Write-Host "  ✔  No residual / self-destruct traces found." -ForegroundColor Green
     } else {
         Write-Host ""
-        Write-Host "  ⚠ $found residual / self-destruct finding(s) detected." -ForegroundColor Red
+        Write-Host "  ⚠  $found residual / self-destruct finding(s)" -ForegroundColor Red
     }
 }
 #endregion
 
-#region Menu & Main
+#region Menu
 $script:Findings = @()
 $script:ScanStart = Get-Date
 
 function Show-Menu {
     Write-Host ""
-    Write-Host "  1.  Scan mod folder          (only flagged / injected)" -ForegroundColor Green
+    Write-Host "  1.  Scan mod folder          (only flagged + strings)" -ForegroundColor Green
     Write-Host "  2.  Scan JVM injection       (live processes)" -ForegroundColor Yellow
-    Write-Host "  3.  Scan residual artifacts  (self-destruct traces)" -ForegroundColor Cyan
-    Write-Host "  4.  Full Scan                (all modules)" -ForegroundColor Magenta
+    Write-Host "  3.  Scan residual artifacts  (self-destruct)" -ForegroundColor Cyan
+    Write-Host "  4.  Full Scan                (everything)" -ForegroundColor Magenta
     Write-Host "  5.  Export report            (JSON + TXT)" -ForegroundColor White
     Write-Host "  6.  View current findings" -ForegroundColor Gray
     Write-Host "  7.  Clear findings" -ForegroundColor DarkYellow
@@ -668,9 +624,9 @@ do {
             Scan-JVMInjection
             Scan-ResidualArtifacts
             Write-Host ""
-            Write-Host "  ══════════════════════════════════════════════════════════════" -ForegroundColor Red
+            Write-Host "  ════════════════════════════════════════════════════════════════" -ForegroundColor Red
             Write-Host "  FULL SCAN COMPLETE" -ForegroundColor White
-            Write-Host "  ══════════════════════════════════════════════════════════════" -ForegroundColor Red
+            Write-Host "  ════════════════════════════════════════════════════════════════" -ForegroundColor Red
             Read-Host "  Press Enter to continue"
             Write-Banner
         }
@@ -681,29 +637,22 @@ do {
                 $report = @{
                     ScanTime = $script:ScanStart.ToString("o")
                     Findings = $script:Findings
-                    Summary = @{
-                        Total      = $script:Findings.Count
-                        Suspicious = ($script:Findings | Where-Object { $_.Tier -eq "Suspicious" }).Count
-                        Bypass     = ($script:Findings | Where-Object { $_.Tier -eq "Bypass" }).Count
-                        Obfuscated = ($script:Findings | Where-Object { $_.Tier -eq "Obfuscated" }).Count
-                        JVM        = ($script:Findings | Where-Object { $_.Tier -eq "JVM" }).Count
-                        Residual   = ($script:Findings | Where-Object { $_.Tier -eq "Residual" }).Count
-                    }
                 }
-
-                $json = $report | ConvertTo-Json -Depth 5
+                $json = $report | ConvertTo-Json -Depth 6
                 $jsonFile = "MagiciansReveal_report_$(Get-Date -Format 'yyyyMMdd_HHmmss').json"
                 $json | Out-File -FilePath $jsonFile -Encoding utf8
-                Write-Host "  ✔ JSON report saved → $jsonFile" -ForegroundColor Green
+                Write-Host "  ✔  JSON → $jsonFile" -ForegroundColor Green
 
-                $txt = "MagiciansReveal V2.1 Forensic Report`n" + ("=" * 55) + "`n"
+                $txt = "MagiciansReveal v2.2 Forensic Report`n" + ("=" * 60) + "`n"
                 $txt += "Scan Time: $($report.ScanTime)`n`n"
                 foreach ($f in $script:Findings) {
-                    $txt += "[$($f.Tier)] $($f.Title)`n  $($f.Message)`n`n"
+                    $txt += "[$($f.Tier)] $($f.Title)`n  $($f.Message)`n"
+                    foreach ($d in $f.Details) { $txt += "    → $d`n" }
+                    $txt += "`n"
                 }
                 $txtFile = "MagiciansReveal_report_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
                 $txt | Out-File -FilePath $txtFile -Encoding utf8
-                Write-Host "  ✔ Text report saved → $txtFile" -ForegroundColor Green
+                Write-Host "  ✔  TXT  → $txtFile" -ForegroundColor Green
             }
             Read-Host "  Press Enter to continue"
             Write-Banner
@@ -716,8 +665,9 @@ do {
                 Write-Host "  ── Current Findings ($($script:Findings.Count)) ──" -ForegroundColor Cyan
                 foreach ($f in $script:Findings) {
                     $color = switch ($f.Tier) {
-                        "Suspicious" { "Yellow" }
+                        "CRITICAL"   { "Red" }
                         "Bypass"     { "Magenta" }
+                        "Suspicious" { "Yellow" }
                         "Obfuscated" { "Cyan" }
                         "JVM"        { "Red" }
                         "Residual"   { "DarkYellow" }
@@ -726,6 +676,9 @@ do {
                     Write-Host ""
                     Write-Host "  [$($f.Tier)] $($f.Title)" -ForegroundColor $color
                     Write-Host "    $($f.Message)" -ForegroundColor White
+                    foreach ($d in $f.Details) {
+                        Write-Host "      → $d" -ForegroundColor Gray
+                    }
                 }
             }
             Read-Host "  Press Enter to continue"
@@ -733,8 +686,8 @@ do {
         }
         "7" {
             $script:Findings = @()
-            Write-Host "  ✔ Findings cleared." -ForegroundColor Green
-            Start-Sleep -Milliseconds 800
+            Write-Host "  ✔  Findings cleared." -ForegroundColor Green
+            Start-Sleep -Milliseconds 700
             Write-Banner
         }
         "8" {
@@ -744,7 +697,7 @@ do {
         }
         default {
             Write-Host "  Invalid choice." -ForegroundColor Red
-            Start-Sleep -Milliseconds 600
+            Start-Sleep -Milliseconds 500
             Write-Banner
         }
     }
