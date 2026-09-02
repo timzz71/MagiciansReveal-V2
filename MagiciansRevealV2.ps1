@@ -6,9 +6,9 @@
     Uses SHA-1 hash verification, 200+ signatures, bypass analysis, obfuscation scoring,
     JVM runtime inspection, and USN Journal/artifact scanning.
 .AUTHOR
-    Magician
+    Tim Cheese
 .VERSION
-    6.0.1
+    2.0.0
 #>
 
 #region Initialisation
@@ -35,7 +35,7 @@ $Banner = @"
 
 Write-Host $Banner -ForegroundColor DarkYellow
 Write-Host ""
-Write-Host "                Magicians Reveal V" -ForegroundColor White
+Write-Host "                Magicians Reveal V2" -ForegroundColor White
 Write-Host ("━" * 76) -ForegroundColor Red
 Write-Host ""
 
@@ -692,16 +692,16 @@ do {
             }
 
             $json = $report | ConvertTo-Json -Depth 5
-            $jsonFile = "MagiciansRevealV6_report_$(Get-Date -Format 'yyyyMMdd_HHmmss').json"
+            $jsonFile = "MagiciansRevealV2_report_$(Get-Date -Format 'yyyyMMdd_HHmmss').json"
             $json | Out-File -FilePath $jsonFile -Encoding utf8
             Write-Host "JSON report saved to $jsonFile" -ForegroundColor Green
 
-            $txt = "MagiciansReveal V6 Report`n" + ("=" * 50) + "`n"
+            $txt = "MagiciansReveal V2 Report`n" + ("=" * 50) + "`n"
             $txt += "Scan Time: $($report.ScanTime)`n`n"
             foreach ($f in $script:Findings) {
                 $txt += "[$($f.Tier)] $($f.Title)`n  $($f.Message)`n"
             }
-            $txtFile = "MagiciansRevealV6_report_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
+            $txtFile = "MagiciansRevealV2_report_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
             $txt | Out-File -FilePath $txtFile -Encoding utf8
             Write-Host "Text report saved to $txtFile" -ForegroundColor Green
 
