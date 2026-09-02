@@ -1,201 +1,17 @@
 <#
 .SYNOPSIS
-    MagiciansRevealV2 – Minecraft Cheat Forensic Scanner (Ultimate GUI)
+    MagiciansRevealV2 – Console Forensic Scanner (Zero False Positives)
 .DESCRIPTION
-    Self‑contained PowerShell script that compiles to an animated GUI executable.
-    Detects cheat clients using cheat‑specific signatures – zero false positives.
+    Menu‑driven PowerShell console scanner for Minecraft cheat clients.
+    Uses cheat‑specific signatures only – never flags legitimate mods.
 .AUTHOR
     Tim$erz
 .VERSION
-    2.1.3
+    3.0.0
 #>
 
-#region Auto‑Compile to EXE
-if ($MyInvocation.MyCommand.Path -match '\.ps1$') {
-    $exePath = $MyInvocation.MyCommand.Path -replace '\.ps1$', '.exe'
-    if (-not (Test-Path $exePath)) {
-        Write-Host "Compiling to EXE..." -ForegroundColor Cyan
-        if (-not (Get-Module -ListAvailable -Name ps2exe)) {
-            Install-Module -Name ps2exe -Scope CurrentUser -Force -AllowClobber -ErrorAction SilentlyContinue
-        }
-        Import-Module ps2exe -Force
-        ps2exe -InputFile $MyInvocation.MyCommand.Path -OutputFile $exePath `
-               -Title "MagiciansRevealV2" -Version "2.1.3" -Company "Tim`$erz" `
-               -Description "Minecraft Cheat Scanner" -NoConsole -ErrorAction SilentlyContinue
-        if (Test-Path $exePath) {
-            Write-Host "EXE created: $exePath" -ForegroundColor Green
-            Start-Process -FilePath $exePath
-            exit
-        } else {
-            Write-Warning "Compilation failed – running as script instead."
-        }
-    } else {
-        Start-Process -FilePath $exePath
-        exit
-    }
-}
-#endregion
-
-#region GUI – NO x:Class, NO CornerRadius on GroupBox
-Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms
-
-$xaml = @'
-<Window
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="MagiciansRevealV2" Height="660" Width="880"
-        WindowStartupLocation="CenterScreen"
-        Background="#1A1A2E" ResizeMode="NoResize"
-        AllowsTransparency="True" WindowStyle="None">
-    <Window.Resources>
-        <DropShadowEffect x:Key="Glow" Color="#6A5ACD" BlurRadius="15" ShadowDepth="0"/>
-        <LinearGradientBrush x:Key="TitleGrad" StartPoint="0,0" EndPoint="1,0">
-            <GradientStop Color="#6A5ACD" Offset="0"/>
-            <GradientStop Color="#FF6B6B" Offset="0.5"/>
-            <GradientStop Color="#6A5ACD" Offset="1"/>
-        </LinearGradientBrush>
-        <LinearGradientBrush x:Key="ButtonGrad" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Color="#6A5ACD" Offset="0"/>
-            <GradientStop Color="#8B5CF6" Offset="1"/>
-        </LinearGradientBrush>
-        <Storyboard x:Key="FadeIn" RepeatBehavior="Forever" AutoReverse="True">
-            <DoubleAnimation Storyboard.TargetName="TitleText" Storyboard.TargetProperty="Opacity" From="0.7" To="1" Duration="0:0:1.5"/>
-        </Storyboard>
-        <Storyboard x:Key="PulseGlow">
-            <DoubleAnimation Storyboard.TargetName="ScanButton" Storyboard.TargetProperty="Effect.BlurRadius" From="10" To="25" Duration="0:0:1" AutoReverse="True" RepeatBehavior="Forever"/>
-        </Storyboard>
-        <Storyboard x:Key="Marquee">
-            <DoubleAnimation Storyboard.TargetName="MarqueeTransform" Storyboard.TargetProperty="TranslateX" From="200" To="-200" Duration="0:0:6" RepeatBehavior="Forever"/>
-        </Storyboard>
-        <Storyboard x:Key="ResultSlideIn">
-            <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleX" From="0.8" To="1" Duration="0:0:0.3"/>
-            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.3"/>
-        </Storyboard>
-    </Window.Resources>
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="50"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="50"/>
-        </Grid.RowDefinitions>
-
-        <!-- Title Bar -->
-        <Border Grid.Row="0" Background="#2A2A3A" CornerRadius="0,0,15,15" Effect="{StaticResource Glow}">
-            <Grid>
-                <TextBlock x:Name="TitleText" Text="✨ MagiciansRevealV2" FontSize="22" FontWeight="Bold" Foreground="{StaticResource TitleGrad}" VerticalAlignment="Center" Margin="15,0,0,0"/>
-                <Button x:Name="CloseButton" Content="✕" Background="Transparent" BorderThickness="0" Foreground="White" FontSize="18" HorizontalAlignment="Right" Margin="0,0,15,0" Cursor="Hand"/>
-            </Grid>
-        </Border>
-
-        <!-- Main Content -->
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Background="#1A1A2E" Padding="0,10,0,0">
-            <StackPanel Margin="25">
-                <TextBlock Text="Minecraft Cheat Forensic Scanner" FontSize="28" FontWeight="Bold" Foreground="White" TextAlignment="Center" Margin="0,0,0,5"/>
-                <TextBlock Text="Zero False Positives – Powered by Cheat‑Only Signatures" FontSize="14" Foreground="#AAAAAA" TextAlignment="Center" Margin="0,0,0,20"/>
-
-                <!-- Marquee status -->
-                <Viewbox Height="30" Margin="0,0,0,15">
-                    <Canvas ClipToBounds="True" Width="400" Height="30">
-                        <TextBlock x:Name="MarqueeText" Text="🔍  Advanced Detection Engine  •  Live Memory Analysis  •  USN Journal Parsing  •  JVM Argument Inspection" FontSize="14" Foreground="#6A5ACD" FontWeight="Bold">
-                            <TextBlock.RenderTransform>
-                                <TranslateTransform x:Name="MarqueeTransform" X="200"/>
-                            </TextBlock.RenderTransform>
-                        </TextBlock>
-                    </Canvas>
-                </Viewbox>
-
-                <!-- Scan Directory – NO CornerRadius -->
-                <GroupBox Header="🎯 Scan Target" Foreground="White" BorderBrush="#444" Margin="0,0,0,15" Background="#25253A">
-                    <StackPanel Orientation="Horizontal" Margin="10">
-                        <TextBlock Text="Minecraft Directory:" Foreground="White" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                        <TextBox x:Name="MinecraftDirBox" Text="$env:APPDATA\.minecraft" Width="320" Foreground="White" Background="#1E1E30" BorderBrush="#555"/>
-                        <Button x:Name="BrowseMinecraftButton" Content="📂" Width="40" Margin="10,0,0,0" Background="#3A3A4A" Foreground="White" BorderThickness="0" Cursor="Hand" FontSize="16"/>
-                    </StackPanel>
-                </GroupBox>
-
-                <!-- Output Directory – NO CornerRadius -->
-                <GroupBox Header="📁 Report Output" Foreground="White" BorderBrush="#444" Margin="0,0,0,15" Background="#25253A">
-                    <StackPanel Orientation="Horizontal" Margin="10">
-                        <TextBlock Text="Save Reports To:" Foreground="White" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                        <TextBox x:Name="OutputDirBox" Text="." Width="320" Foreground="White" Background="#1E1E30" BorderBrush="#555"/>
-                        <Button x:Name="BrowseOutputButton" Content="📂" Width="40" Margin="10,0,0,0" Background="#3A3A4A" Foreground="White" BorderThickness="0" Cursor="Hand" FontSize="16"/>
-                    </StackPanel>
-                </GroupBox>
-
-                <!-- Progress -->
-                <StackPanel Margin="0,0,0,15">
-                    <TextBlock x:Name="StatusText" Text="Ready" Foreground="#AAAAAA" FontSize="14" FontWeight="Bold"/>
-                    <ProgressBar x:Name="ProgressBar" Height="22" Foreground="{StaticResource ButtonGrad}" Background="#333" Margin="0,5,0,0" Value="0" Minimum="0" Maximum="100"/>
-                </StackPanel>
-
-                <!-- Scan Button -->
-                <Button x:Name="ScanButton" Content="🚀  START SCAN" FontSize="20" FontWeight="Bold" Background="{StaticResource ButtonGrad}" Foreground="White" BorderThickness="0" Height="55" Cursor="Hand" Effect="{StaticResource Glow}"/>
-
-                <!-- Results List -->
-                <ListBox x:Name="ResultsList" Margin="0,15,0,0" Height="200" Background="#1E1E30" Foreground="White" BorderBrush="#444" FontFamily="Consolas" FontSize="12">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel Orientation="Horizontal" Margin="5">
-                                <TextBlock Text="{Binding Tier}" Width="90" Foreground="{Binding Color}" FontWeight="Bold"/>
-                                <TextBlock Text="{Binding Title}" Width="210" Foreground="White"/>
-                                <TextBlock Text="{Binding Message}" Foreground="#AAAAAA" TextWrapping="Wrap"/>
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-
-                <!-- Export Button -->
-                <Button x:Name="ExportButton" Content="📄  Export Report" FontSize="15" Background="#3A3A4A" Foreground="White" BorderThickness="0" Height="45" Margin="0,10,0,0" Cursor="Hand" IsEnabled="False"/>
-            </StackPanel>
-        </ScrollViewer>
-
-        <!-- Footer -->
-        <Border Grid.Row="2" Background="#1E1E30" CornerRadius="15,15,0,0">
-            <TextBlock Text="© 2026 Tim$erz – For Consented Screenshare Investigations Only" Foreground="#666" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="12"/>
-        </Border>
-    </Grid>
-</Window>
-'@
-
-# Load XAML
-try {
-    $xmlReader = New-Object System.Xml.XmlNodeReader ([xml]$xaml)
-    $window = [Windows.Markup.XamlReader]::Load($xmlReader)
-} catch {
-    [System.Windows.MessageBox]::Show("XAML loading failed: $_", "Error", "OK", "Error")
-    exit
-}
-
-# Find controls
-$MinecraftDirBox = $window.FindName("MinecraftDirBox")
-$OutputDirBox = $window.FindName("OutputDirBox")
-$StatusText = $window.FindName("StatusText")
-$ProgressBar = $window.FindName("ProgressBar")
-$ResultsList = $window.FindName("ResultsList")
-$ScanButton = $window.FindName("ScanButton")
-$ExportButton = $window.FindName("ExportButton")
-$CloseButton = $window.FindName("CloseButton")
-$BrowseMinecraftButton = $window.FindName("BrowseMinecraftButton")
-$BrowseOutputButton = $window.FindName("BrowseOutputButton")
-$MarqueeTransform = $window.FindName("MarqueeTransform")
-
-# ---- Event bindings using .Add_EventName() ----
-$window.Add_MouseLeftButtonDown({ $window.DragMove() })
-$CloseButton.Add_Click({ $window.Close() })
-$BrowseMinecraftButton.Add_Click({
-    $folder = New-Object System.Windows.Forms.FolderBrowserDialog
-    if ($folder.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $MinecraftDirBox.Text = $folder.SelectedPath }
-})
-$BrowseOutputButton.Add_Click({
-    $folder = New-Object System.Windows.Forms.FolderBrowserDialog
-    if ($folder.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $OutputDirBox.Text = $folder.SelectedPath }
-})
-
-# Start marquee
-if ($window.Resources["Marquee"]) { $window.BeginStoryboard($window.Resources["Marquee"]) }
-
-# ---- Signature Database (Zero False Positives) ----
-$cheatClientNames = @(
+#region Signature Database (from specification)
+$script:CheatClientNames = @(
     "Vape","VapeV4","VapeLite","VapeClient",
     "Meteor","MeteorClient",
     "LiquidBounce","LiquidBounceNextGen",
@@ -284,14 +100,14 @@ $cheatClientNames = @(
     "Xenon","XenonClient",
     "Asteria","AsteriaClient"
 )
-$cheatPackagePaths = @(
+$script:CheatPackagePaths = @(
     "cc/novoline", "com/alan/clients", "club/maxstats", "wtf/moonlight",
     "me/zeroeightsix/kami", "net/ccbluex", "today/opai", "net/minecraft/injection",
     "org/chainlibs/module/impl/modules", "xyz/greaj", "com/cheatbreaker",
     "com/moonsworth", "dev/krypton", "skid/krypton", "dev/gambleclient",
     "dev/virel", "org/jose4j/jwt", "sixtwo/", "fivefive/"
 )
-$cheatModules = @(
+$script:CheatModules = @(
     "KillAura","Killaura","killaura",
     "CrystalAura","crystalaura",
     "AutoCrystal","autocrystal",
@@ -384,7 +200,7 @@ $cheatModules = @(
     "Bypass","bypass",
     "AntiBan","antiban"
 )
-$cheatDomains = @(
+$script:CheatDomains = @(
     "vape.gg","vapeclient.com","meteorclient.com","liquidbounce.net","wurstclient.net",
     "sigmaclient.com","novoware.cc","gamesense.pw","osirisclient.com","cosmosclient.com",
     "sorusclient.net","azuraclient.com","deltaclient.net","elysianclient.org",
@@ -394,7 +210,7 @@ $cheatDomains = @(
     "miraiclient.net","ozarkclient.com","raionclient.net","seppukuclient.com",
     "vertexclient.net","prestigeclient.vip","dqrkis.xyz","orchard.gg"
 )
-$fullwidthPatterns = @(
+$script:FullwidthPatterns = @(
     "’╝Ī’ĮĢ’Įö’ĮÅ’╝Ż’ĮÆ’ĮÖ’Įō’Įö’Įü’Įī",
     "’╝Ī’ĮĢ’Įö’ĮÅ’╝Ī’ĮÄ’Įā’Įł’ĮÅ’ĮÆ",
     "’╝Ī’ĮĢ’Įö’ĮÅ’╝┤’ĮÅ’Įö’Įģ’ĮŹ",
@@ -433,230 +249,311 @@ $fullwidthPatterns = @(
     "’╝┴’ĮÆ’Įē’Įć’Įć’Įģ’ĮÆ’╝▓’ĮÅ’Įō’ĮÅ’Įā’Įē’Įģ’Įä",
     "’╝’ĮĢ’Įł’ĮŠ’╝ī’Įł’Įä’Įē’ĮŠ"
 )
+#endregion
 
-# ---- Scan functions ----
-$findings = @()
+#region Helper Functions
+$script:Findings = @()
+$script:ScanStart = Get-Date
+
 function Add-Finding {
-    param($Tier, $Category, $Title, $Message, [hashtable]$Evidence = @{})
-    $color = switch ($Tier) { "Detection" { "Red" } "Warning" { "Yellow" } default { "Gray" } }
-    $findings += @{
+    param(
+        [string]$Tier,    # Detection, Warning, Info
+        [string]$Category,
+        [string]$Title,
+        [string]$Message,
+        [hashtable]$Evidence = @{}
+    )
+    $finding = @{
         Tier      = $Tier
         Category  = $Category
         Title     = $Title
         Message   = $Message
         Evidence  = $Evidence
         Timestamp = (Get-Date).ToString("o")
-        Color     = $color
     }
-    $ResultsList.Dispatcher.Invoke({
-        $item = @{ Tier = $Tier; Title = $Title; Message = $Message; Color = $color }
-        $ResultsList.Items.Add($item)
-        $container = $ResultsList.ItemContainerGenerator.ContainerFromIndex($ResultsList.Items.Count - 1)
-        if ($container -and $window.Resources["ResultSlideIn"]) {
-            $container.RenderTransform = [System.Windows.Media.ScaleTransform]::new(0.8, 1)
-            $container.Opacity = 0
-            $container.BeginStoryboard($window.Resources["ResultSlideIn"])
-        }
-        $ResultsList.ScrollIntoView($ResultsList.Items[$ResultsList.Items.Count - 1])
-    })
+    $script:Findings += $finding
+    # Colour output
+    $color = switch ($Tier) {
+        "Detection" { "Red" }
+        "Warning"   { "Yellow" }
+        default     { "Gray" }
+    }
+    Write-Host "[$Tier] $Title" -ForegroundColor $color
+    Write-Host "  $Message" -ForegroundColor White
 }
 
-function Update-Status {
-    param($Text, $Progress = -1)
-    $StatusText.Dispatcher.Invoke({ $StatusText.Text = $Text })
-    if ($Progress -ge 0) { $ProgressBar.Dispatcher.Invoke({ $ProgressBar.Value = $Progress }) }
+function Write-Header {
+    Clear-Host
+    Write-Host "===========================================" -ForegroundColor Cyan
+    Write-Host "   MagiciansRevealV2 – Forensic Scanner    " -ForegroundColor Magenta
+    Write-Host "   Zero False Positives – Cheat‑Only       " -ForegroundColor Cyan
+    Write-Host "===========================================" -ForegroundColor Cyan
+    Write-Host ""
+}
+
+function Show-Menu {
+    Write-Header
+    Write-Host "1. Scan Minecraft Directory"
+    Write-Host "2. Scan Full System (Processes, Registry, DNS)"
+    Write-Host "3. Export Report (JSON + TXT)"
+    Write-Host "4. View Findings"
+    Write-Host "5. Clear Findings"
+    Write-Host "6. Exit"
+    Write-Host ""
+    $choice = Read-Host "Enter choice"
+    return $choice
 }
 
 function Test-Admin {
     (New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-function Scan-FileSystem {
-    param($minecraftDir)
-    if (-not (Test-Path $minecraftDir)) {
-        Add-Finding "Warning" "File System" "Minecraft Directory Missing" "Directory $minecraftDir not found"
+function Get-FileContentAsString {
+    param([string]$Path)
+    try {
+        $bytes = [System.IO.File]::ReadAllBytes($Path)
+        # Try UTF‑8, fallback to ASCII
+        $enc = [System.Text.Encoding]::UTF8
+        $text = $enc.GetString($bytes)
+        if ($text -match "\0") {
+            $enc = [System.Text.Encoding]::Unicode
+            $text = $enc.GetString($bytes)
+        }
+        return $text
+    } catch {
+        return $null
+    }
+}
+#endregion
+
+#region Scan Modules
+function Scan-MinecraftDirectory {
+    param([string]$Path)
+    if (-not (Test-Path $Path)) {
+        Write-Host "Path not found: $Path" -ForegroundColor Red
         return
     }
-    $modsDir = Join-Path $minecraftDir "mods"
-    if (-not (Test-Path $modsDir)) { return }
-
+    $modsDir = Join-Path $Path "mods"
+    if (-not (Test-Path $modsDir)) {
+        Write-Host "No 'mods' folder found at $modsDir" -ForegroundColor Yellow
+        return
+    }
+    Write-Host "Scanning $modsDir ..." -ForegroundColor Green
     $jars = Get-ChildItem -Path $modsDir -Filter *.jar -ErrorAction SilentlyContinue
+    if ($jars.Count -eq 0) {
+        Write-Host "No JAR files found." -ForegroundColor Yellow
+        return
+    }
     $total = $jars.Count
     $i = 0
     foreach ($jar in $jars) {
         $i++
-        Update-Status "Scanning JAR: $($jar.Name)" -Progress (($i / $total) * 100)
-        $content = Get-Content -Path $jar.FullName -Raw -ErrorAction SilentlyContinue
+        Write-Progress -Activity "Scanning JARs" -Status "$($jar.Name)" -PercentComplete (($i / $total) * 100)
+        $content = Get-FileContentAsString -Path $jar.FullName
         if (-not $content) { continue }
 
-        foreach ($client in $cheatClientNames) {
+        # Client names (Detection)
+        foreach ($client in $script:CheatClientNames) {
             if ($content -match "\b$client\b") {
-                Add-Finding "Detection" "File System" "Cheat Client Found" "Client name '$client' in $($jar.Name)" @{File=$jar.Name; Client=$client}
+                Add-Finding -Tier "Detection" -Category "File System" -Title "Cheat Client Found" -Message "Client name '$client' in $($jar.Name)" -Evidence @{File=$jar.Name; Client=$client}
                 break
             }
         }
-        foreach ($pkg in $cheatPackagePaths) {
+        # Package paths (Detection)
+        foreach ($pkg in $script:CheatPackagePaths) {
             if ($content -match $pkg) {
-                Add-Finding "Detection" "File System" "Cheat Package Path" "Package '$pkg' found in $($jar.Name)" @{File=$jar.Name; Package=$pkg}
+                Add-Finding -Tier "Detection" -Category "File System" -Title "Cheat Package Path" -Message "Package '$pkg' found in $($jar.Name)" -Evidence @{File=$jar.Name; Package=$pkg}
             }
         }
-        foreach ($mod in $cheatModules) {
+        # Module names (Warning unless combined with client)
+        foreach ($mod in $script:CheatModules) {
             if ($content -match "\b$mod\b") {
-                Add-Finding "Warning" "File System" "Cheat Module" "Module '$mod' in $($jar.Name)" @{File=$jar.Name; Module=$mod}
+                # Check if also has a client or package to upgrade to Detection
+                $hasClient = $false
+                foreach ($c in $script:CheatClientNames) {
+                    if ($content -match "\b$c\b") { $hasClient = $true; break }
+                }
+                $hasPkg = $false
+                foreach ($p in $script:CheatPackagePaths) {
+                    if ($content -match $p) { $hasPkg = $true; break }
+                }
+                if ($hasClient -or $hasPkg) {
+                    Add-Finding -Tier "Detection" -Category "File System" -Title "Cheat Module with Context" -Message "Module '$mod' in $($jar.Name) with cheat context" -Evidence @{File=$jar.Name; Module=$mod}
+                } else {
+                    Add-Finding -Tier "Warning" -Category "File System" -Title "Cheat Module" -Message "Module '$mod' in $($jar.Name) (no client context)" -Evidence @{File=$jar.Name; Module=$mod}
+                }
             }
         }
-        foreach ($fw in $fullwidthPatterns) {
+        # Fullwidth obfuscated strings (Detection)
+        foreach ($fw in $script:FullwidthPatterns) {
             if ($content -match $fw) {
-                Add-Finding "Detection" "File System" "Fullwidth Obfuscation" "Obfuscated string found in $($jar.Name)" @{File=$jar.Name}
+                Add-Finding -Tier "Detection" -Category "File System" -Title "Fullwidth Obfuscation" -Message "Obfuscated string found in $($jar.Name)" -Evidence @{File=$jar.Name}
             }
         }
     }
+    Write-Progress -Activity "Scanning JARs" -Completed
 }
 
-function Scan-Registry {
-    Update-Status "Scanning Registry..." -Progress 80
-    foreach ($client in $cheatClientNames) {
-        $path = "HKCU:\Software\$client"
-        if (Test-Path $path) {
-            Add-Finding "Detection" "Registry" "Cheat Registry Key" "Key $path exists" @{Key=$path}
-        }
-    }
-    try {
-        $prefetch = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters" -Name "EnablePrefetcher" -ErrorAction SilentlyContinue).EnablePrefetcher
-        if ($prefetch -eq 0) {
-            Add-Finding "Detection" "Registry" "Prefetch Disabled" "EnablePrefetcher set to 0"
-        }
-    } catch {}
-}
-
-function Scan-Processes {
-    Update-Status "Scanning Processes..." -Progress 85
+function Scan-System {
+    Write-Host "Scanning system (processes, registry, DNS)..." -ForegroundColor Green
+    # Processes
     $procs = Get-Process -ErrorAction SilentlyContinue
     foreach ($p in $procs) {
         $name = $p.ProcessName.ToLower()
-        foreach ($client in $cheatClientNames) {
+        foreach ($client in $script:CheatClientNames) {
             if ($name -match $client.ToLower()) {
-                Add-Finding "Detection" "Processes" "Cheat Process Running" "Process $($p.ProcessName) matches '$client'" @{Process=$p.ProcessName; Client=$client}
+                Add-Finding -Tier "Detection" -Category "Processes" -Title "Cheat Process Running" -Message "Process $($p.ProcessName) matches '$client'" -Evidence @{Process=$p.ProcessName; Client=$client}
                 break
             }
         }
+        # JVM arguments
         if ($p.ProcessName -match "javaw|java") {
             try {
                 $cmd = (Get-CimInstance -ClassName Win32_Process -Filter "ProcessId = $($p.Id)" -ErrorAction SilentlyContinue).CommandLine
                 if ($cmd) {
                     if ($cmd -match "-Dclient\.brand=(Wurst|Impact|Meteor|Sigma|LiquidBounce|Vape|Novoline)") {
-                        Add-Finding "Detection" "Processes" "Malicious JVM Argument" "JVM brand: $($Matches[0])" @{Argument=$Matches[0]}
+                        Add-Finding -Tier "Detection" -Category "Processes" -Title "Malicious JVM Argument" -Message "JVM brand: $($Matches[0])" -Evidence @{Argument=$Matches[0]}
                     }
                     if ($cmd -match "-D(xray|fly|speed|killaura|reach|scaffold|autocrystal|autototem)") {
-                        Add-Finding "Detection" "Processes" "JVM Cheat Flag" "Flag: $($Matches[0])" @{Argument=$Matches[0]}
+                        Add-Finding -Tier "Detection" -Category "Processes" -Title "JVM Cheat Flag" -Message "Flag: $($Matches[0])" -Evidence @{Argument=$Matches[0]}
                     }
                 }
             } catch {}
         }
     }
-}
-
-function Scan-DNS {
-    Update-Status "Scanning DNS Cache..." -Progress 90
-    $dns = ipconfig /displaydns 2>$null | Select-String "Record Name.*:\s+(.*)" | ForEach-Object { $_.Matches.Groups[1].Value }
-    foreach ($domain in $cheatDomains) {
-        if ($dns -match $domain) {
-            Add-Finding "Detection" "DNS" "Cheat Domain in Cache" "Domain $domain resolved" @{Domain=$domain}
+    # Registry
+    foreach ($client in $script:CheatClientNames) {
+        $path = "HKCU:\Software\$client"
+        if (Test-Path $path) {
+            Add-Finding -Tier "Detection" -Category "Registry" -Title "Cheat Registry Key" -Message "Key $path exists" -Evidence @{Key=$path}
         }
     }
-}
-
-function Scan-Prefetch {
-    Update-Status "Scanning Prefetch..." -Progress 95
+    # DNS cache
+    $dns = ipconfig /displaydns 2>$null | Select-String "Record Name.*:\s+(.*)" | ForEach-Object { $_.Matches.Groups[1].Value }
+    foreach ($domain in $script:CheatDomains) {
+        if ($dns -match $domain) {
+            Add-Finding -Tier "Detection" -Category "DNS" -Title "Cheat Domain in Cache" -Message "Domain $domain resolved" -Evidence @{Domain=$domain}
+        }
+    }
+    # Prefetch
     $prefetchDir = "$env:windir\Prefetch"
     if (-not (Test-Path $prefetchDir)) {
-        Add-Finding "Detection" "Prefetch" "Prefetch Folder Missing" "Prefetch folder not present"
-        return
+        Add-Finding -Tier "Detection" -Category "Prefetch" -Title "Prefetch Folder Missing" -Message "Prefetch folder not present"
+    } else {
+        $files = Get-ChildItem $prefetchDir -ErrorAction SilentlyContinue
+        if ($files.Count -lt 5) {
+            Add-Finding -Tier "Warning" -Category "Prefetch" -Title "Low Prefetch Count" -Message "Only $($files.Count) prefetch files – possible deletion"
+        }
     }
-    $files = Get-ChildItem $prefetchDir -ErrorAction SilentlyContinue
-    if ($files.Count -lt 5) {
-        Add-Finding "Warning" "Prefetch" "Low Prefetch Count" "Only $($files.Count) prefetch files – possible deletion"
-    }
-}
-
-function Scan-EventLogs {
-    Update-Status "Scanning Event Logs..." -Progress 98
+    # Event logs
     $logs = @("Application", "System", "Security", "Windows PowerShell")
     foreach ($log in $logs) {
         try {
             $events = Get-WinEvent -LogName $log -MaxEvents 1 -ErrorAction SilentlyContinue
             if (-not $events) {
-                Add-Finding "Warning" "Event Logs" "Event Log Cleared" "Event log $log appears empty (cleared?)" @{Log=$log}
+                Add-Finding -Tier "Warning" -Category "Event Logs" -Title "Event Log Cleared" -Message "Event log $log appears empty (cleared?)" -Evidence @{Log=$log}
             }
         } catch {}
     }
+    Write-Host "System scan complete." -ForegroundColor Green
 }
+#endregion
 
-# ---- Scan Button ----
-$ScanButton.Add_Click({
-    $findings = @()
-    $ResultsList.Items.Clear()
-    $ExportButton.IsEnabled = $false
-    $ScanButton.IsEnabled = $false
-    Update-Status "Starting scan..." -Progress 0
-
-    if (-not (Test-Admin)) {
-        Add-Finding "Warning" "Privileges" "Not Administrator" "Run as Administrator for full coverage"
+#region Report Export
+function Export-Report {
+    if ($script:Findings.Count -eq 0) {
+        Write-Host "No findings to export." -ForegroundColor Yellow
+        return
     }
-
-    $minecraftDir = $MinecraftDirBox.Text
-    if ($minecraftDir -match '\$env:') {
-        $minecraftDir = [Environment]::ExpandEnvironmentVariables($minecraftDir)
-    }
-    $outputDir = $OutputDirBox.Text
-    if ($outputDir -match '\$env:') {
-        $outputDir = [Environment]::ExpandEnvironmentVariables($outputDir)
-    }
-    if (-not (Test-Path $outputDir)) { New-Item -ItemType Directory -Path $outputDir -Force | Out-Null }
-
-    Scan-FileSystem -minecraftDir $minecraftDir
-    Scan-Registry
-    Scan-Processes
-    Scan-DNS
-    Scan-Prefetch
-    Scan-EventLogs
-
-    Update-Status "Scan complete. $($findings.Count) findings." -Progress 100
-    $ExportButton.IsEnabled = $true
-    $ScanButton.IsEnabled = $true
-    $script:lastFindings = $findings
-    $script:outputDir = $outputDir
-})
-
-# ---- Export Button ----
-$ExportButton.Add_Click({
-    if (-not $script:lastFindings) { return }
     $report = @{
-        ScanTime = (Get-Date).ToString("o")
-        Findings = $script:lastFindings
-        Summary = @{
-            Total = $script:lastFindings.Count
-            Detections = ($script:lastFindings | Where-Object { $_.Tier -eq "Detection" }).Count
-            Warnings = ($script:lastFindings | Where-Object { $_.Tier -eq "Warning" }).Count
-            Info = ($script:lastFindings | Where-Object { $_.Tier -eq "Info" }).Count
+        ScanTime   = $script:ScanStart.ToString("o")
+        Findings   = $script:Findings
+        Summary    = @{
+            Total      = $script:Findings.Count
+            Detections = ($script:Findings | Where-Object { $_.Tier -eq "Detection" }).Count
+            Warnings   = ($script:Findings | Where-Object { $_.Tier -eq "Warning" }).Count
+            Info       = ($script:Findings | Where-Object { $_.Tier -eq "Info" }).Count
         }
     }
     $json = $report | ConvertTo-Json -Depth 5
-    $jsonFile = Join-Path $script:outputDir "MagiciansRevealV2_report.json"
+    $jsonFile = "MagiciansRevealV2_report_$(Get-Date -Format 'yyyyMMdd_HHmmss').json"
     $json | Out-File -FilePath $jsonFile -Encoding utf8
+    Write-Host "JSON report saved to $jsonFile" -ForegroundColor Green
 
     $txt = "MagiciansRevealV2 Forensic Report`n" + "="*50 + "`n"
     $txt += "Scan Time: $($report.ScanTime)`n`n"
-    foreach ($f in $script:lastFindings) {
+    foreach ($f in $script:Findings) {
         $txt += "[$($f.Tier)] $($f.Title)`n  $($f.Message)`n"
     }
-    $txtFile = Join-Path $script:outputDir "MagiciansRevealV2_report.txt"
+    $txtFile = "MagiciansRevealV2_report_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
     $txt | Out-File -FilePath $txtFile -Encoding utf8
+    Write-Host "Text report saved to $txtFile" -ForegroundColor Green
+}
 
-    [System.Windows.MessageBox]::Show("Reports saved to $($script:outputDir)", "Export Complete", "OK", "Information")
-})
+function Show-Findings {
+    if ($script:Findings.Count -eq 0) {
+        Write-Host "No findings." -ForegroundColor Yellow
+        return
+    }
+    Write-Host "`n--- Findings ($($script:Findings.Count)) ---" -ForegroundColor Cyan
+    foreach ($f in $script:Findings) {
+        $color = switch ($f.Tier) {
+            "Detection" { "Red" }
+            "Warning"   { "Yellow" }
+            default     { "Gray" }
+        }
+        Write-Host "[$($f.Tier)] $($f.Title)" -ForegroundColor $color
+        Write-Host "  $($f.Message)" -ForegroundColor White
+    }
+    Write-Host ""
+}
+#endregion
 
-# Start GUI with fade‑in
-if ($window.Resources["FadeIn"]) { $window.BeginStoryboard($window.Resources["FadeIn"]) }
-$window.ShowDialog() | Out-Null
+#region Main Menu Loop
+if (-not (Test-Admin)) {
+    Write-Host "WARNING: Not running as Administrator – some checks may fail." -ForegroundColor Red
+    Read-Host "Press Enter to continue"
+}
+
+$script:minecraftPath = ""
+do {
+    $choice = Show-Menu
+    switch ($choice) {
+        "1" {
+            $path = Read-Host "Enter Minecraft directory (e.g., C:\Users\...\.minecraft)"
+            if (Test-Path $path) {
+                $script:minecraftPath = $path
+                Scan-MinecraftDirectory -Path $path
+            } else {
+                Write-Host "Path not found." -ForegroundColor Red
+            }
+            Read-Host "Press Enter to continue"
+        }
+        "2" {
+            Scan-System
+            Read-Host "Press Enter to continue"
+        }
+        "3" {
+            Export-Report
+            Read-Host "Press Enter to continue"
+        }
+        "4" {
+            Show-Findings
+            Read-Host "Press Enter to continue"
+        }
+        "5" {
+            $script:Findings = @()
+            Write-Host "Findings cleared." -ForegroundColor Green
+            Read-Host "Press Enter to continue"
+        }
+        "6" {
+            Write-Host "Exiting." -ForegroundColor Cyan
+            exit
+        }
+        default {
+            Write-Host "Invalid choice." -ForegroundColor Red
+            Read-Host "Press Enter to continue"
+        }
+    }
+} while ($true)
 #endregion
