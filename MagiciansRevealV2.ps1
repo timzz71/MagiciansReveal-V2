@@ -498,9 +498,9 @@ function Scan-Residual {
 #region Menu
 function Show-Menu {
     Write-Host ""
-    Write-Host "  1.  Scan Mods Folder          (threats only)" -ForegroundColor Green
-    Write-Host "  2.  Scan JVM Injection        (live)" -ForegroundColor Yellow
-    Write-Host "  3.  Scan Residual Artifacts   (self-destruct)" -ForegroundColor Cyan
+    Write-Host "  1.  Scan Mods Folder          " -ForegroundColor Green
+    Write-Host "  2.  Scan JVM Injection        " -ForegroundColor Yellow
+    Write-Host "  3.  Scan Residual Artifacts   " -ForegroundColor Cyan
     Write-Host "  4.  Full Scan" -ForegroundColor Magenta
     Write-Host "  5.  Export Report" -ForegroundColor White
     Write-Host "  6.  View Findings" -ForegroundColor Gray
