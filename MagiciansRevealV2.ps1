@@ -18,11 +18,11 @@ $ReportId = [guid]::NewGuid().ToString()
 $Flags = [System.Collections.Generic.List[object]]::new()
 $ModulesRun = [System.Collections.Generic.List[string]]::new()
 $ModulesSkipped = [System.Collections.Generic.List[string]]::new()
-$EnvironmentUntrusted = $false
-$StopScan = $false
-$SystemInfo = @{}
-$RulesetVersion = 'builtin-2.0.0'
-$KnownClients = @(); $KnownHosts = @(); $KnownStrings = @(); $KnownHashes = @{}
+$script:EnvironmentUntrusted = $false
+$script:StopScan = $false
+$script:SystemInfo = @{}
+$script:RulesetVersion = 'builtin-2.0.0'
+$script:KnownClients = @(); $script:KnownHosts = @(); $script:KnownStrings = @(); $script:KnownHashes = @{}
 
 $moduleNames = @(
     "AutoCrystal","AutoHitCrystal","AutoAnchor","DoubleAnchor","SafeAnchor","AirAnchor",
@@ -251,4 +251,4 @@ $lines | Set-Content -LiteralPath $txtPath -Encoding UTF8
 if($UploadUri){try{$headers=@{'Authorization'="Bearer $ScanToken"};Invoke-RestMethod -Uri $UploadUri -Method Post -Headers $headers -ContentType 'application/json' -Body ($report|ConvertTo-Json -Depth 12) -ErrorAction Stop | Out-Null;Add-Content $txtPath "Uploaded successfully to $UploadUri"}catch{Add-Content $txtPath "Upload failed; local report retained. $($_.Exception.Message)"}}
 Write-Host "Scan complete. JSON: $jsonPath" -ForegroundColor Green
 Write-Host "Summary: $txtPath"
-Write-Host "Findings: $($Flags.Count) | Detection: $(($Flags|? tier -eq Detection).Count) | Warning: $(($Flags|? tier -eq Warning).Count)"
+Write-Host "Findings: $($Flags.Count) | Detection: $(($Flags|? tier -eq Detection).
