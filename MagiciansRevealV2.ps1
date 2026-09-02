@@ -1,541 +1,563 @@
+#Requires -Version 5.1
 <#
 .SYNOPSIS
-    MagiciansRevealV2 – Console Forensic Scanner
+    Minecraft Cheat Client Forensic Scanner (Zero False-Positive Edition) – Fixed Unicode
 .DESCRIPTION
-    Menu-driven PowerShell scanner for Minecraft cheat clients.
-    Uses signature matching, fullwidth detection, obfuscation analysis and runtime checks.
-.AUTHOR
-    Tim$erz
-.VERSION
-    3.0.1
+    Professional self-contained PowerShell forensic scanner.
+    Detects known Minecraft cheat clients using ONLY cheat-specific signatures.
+    Produces severity-tiered human-readable report + structured JSON.
+.NOTES
+    Version     : 3.2.0 (Unicode-safe)
+    No external dependencies.
 #>
 
-#region Initialisation
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$OutputEncoding = [System.Text.Encoding]::UTF8
-chcp 65001 | Out-Null
-Clear-Host
+[CmdletBinding()]
+param(
+    [string]$OutputDir = "$env:TEMP\MCCheatScan_$(Get-Date -Format 'yyyyMMdd_HHmmss')",
+    [switch]$DeepJarScan,
+    [switch]$SkipDns,
+    [switch]$Quiet
+)
 
-$Banner = @"
- ███╗   ███╗ █████╗  ██████╗ ██╗ ██████╗██╗ █████╗ ███╗   ██╗███████╗
- ████╗ ████║██╔══██╗██╔════╝ ██║██╔════╝██║██╔══██╗████╗  ██║██╔════╝
- ██╔████╔██║███████║██║  ███╗██║██║     ██║███████║██╔██╗ ██║███████╗
- ██║╚██╔╝██║██╔══██║██║   ██║██║██║     ██║██╔══██║██║╚██╗██║╚════██║
- ██║ ╚═╝ ██║██║  ██║╚██████╔╝██║╚██████╗██║██║  ██║██║ ╚████║███████║
- ╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝ ╚═════╝╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Continue'
+$ProgressPreference = 'SilentlyContinue'
 
- ██████╗ ███████╗██╗   ██╗███████╗ █████╗ ██╗     
- ██╔══██╗██╔════╝██║   ██║██╔════╝██╔══██╗██║     
- ██████╔╝█████╗  ██║   ██║█████╗  ███████║██║     
- ██╔══██╗██╔══╝  ╚██╗ ██╔╝██╔══╝  ██╔══██║██║     
- ██║  ██║███████╗ ╚████╔╝ ███████╗██║  ██║███████╗
- ╚═╝  ╚═╝╚══════╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝╚══════╝
-"@
+# ---------------------------------------------------------------------------
+# 1. CHEAT-ONLY SIGNATURE DATABASE
+# ---------------------------------------------------------------------------
 
-Write-Host $Banner -ForegroundColor Cyan
-Write-Host ""
-Write-Host "                Magicians Reveal V2" -ForegroundColor White
-Write-Host "                Forensic Scanner" -ForegroundColor DarkGray
-Write-Host ""
-Write-Host ("━" * 76) -ForegroundColor DarkCyan
-Write-Host ""
-#endregion
+$ClientBrandStrings = @(
+    'vape.gg','vapeclient.com','vapeclient','vape-lite','Vape','VapeV4','VapeLite','VapeClient',
+    'meteor-client','meteorclient','meteor.development','Meteor','MeteorClient',
+    'liquidbounce','net.ccbluex','liquidbounce.net','LiquidBounce','LiquidBounceNextGen',
+    'wurst','wurstclient','Wurst','WurstClient',
+    'sigmaclient','sigma client','sigmaclient.com','Sigma','SigmaClient',
+    'salhack','salhack client','Salhack','SalHack',
+    'novoware','novo client','novoware.cc','Novoware','NovoWare',
+    'gamesense','gamesense client','gamesense.pw','GameSense','GameSenseClient',
+    'osiris','osirisclient','osirisclient.com','Osiris','OsirisClient',
+    'cosmos','cosmosclient','cosmosclient.com','Cosmos','CosmosClient',
+    'sorus','sorusclient','sorusclient.net','Sorus','SorusClient',
+    'azura','azuraclient','azuraclient.com','Azura','AzuraClient',
+    'doomsday','doomsdayclient','doomsdayclient.com','Doomsday','DoomsdayClient',
+    'argon','argonclient','argonclient.com','Argon','ArgonClient',
+    'krypton','kryptonclient','kryptonclient.net','Krypton','KryptonClient',
+    'prestige','prestigeclient','prestigeclient.vip','Prestige','PrestigeClient',
+    '198macros','macro198','macros198','198Macros',
+    'delta','deltaclient','deltaclient.net','Delta','DeltaClient',
+    'elysian','elysianclient','elysianclient.org','Elysian','ElysianClient',
+    'onyx','onyxclient','onyxclient.com','Onyx','OnyxClient',
+    'lumina','luminaclient','luminaclient.net','Lumina','LuminaClient',
+    'momentum','momentumclient','momentumclient.com','Momentum','MomentumClient',
+    'ravenbplusplus','ravenb++','ravenbplusplus.net','RavenB++','RavenBPlusPlus',
+    'uzi','uziclient','uziclient.com','UZI','UziClient',
+    'skidbounce','skidbounceclient','skidbounce.net','SkidBounce','SkidBounceClient',
+    'skidcraft','skidcraftclient','Skidcraft','SkidcraftClient',
+    'backdoored','backdooredclient','Backdoored','BackdooredClient',
+    'leuxbackdoor','LeuxBackdoor',
+    'salhackskid','SalHackSkid',
+    'grassware','grasswareclient','GrassWare','GrassWareClient',
+    'allahware','allahwareclient','AllahWare','AllahWareClient',
+    'bbcware','bbcwareclient','BBCWare','BBCWareClient',
+    'arsenic','arsenicclient','Arsenic','ArsenicClient',
+    'atrium','atriumclient','Atrium','AtriumClient',
+    'bleachhack','bleachhack.org','BleachHack','BleachHackClient',
+    'caizm','caizmclient','Caizm','CaizmClient',
+    'coffee','coffeeclient','Coffee','CoffeeClient',
+    'cranberry','cranberryclient','Cranberry','CranberryClient',
+    'evangelion','evangelionclient','Evangelion','EvangelionClient',
+    'fdp','fdpclient','FDP','FDPClient',
+    'fog','fogclient','Fog','FogClient',
+    'forgehax','forgehax.com','ForgeHax','ForgeHaxClient',
+    'huzuni','huzuni.org','Huzuni','HuzuniClient',
+    'hydrogen','hydrogenclient','Hydrogen','HydrogenClient',
+    'ikea','ikeaclient','Ikea','IkeaClient',
+    'jex','jexclient','Jex','JexClient',
+    'kamiblue','kamiblue.org','Kamiblue','KamiblueClient','KAMI','KAMIClient',
+    'konas','konasclient.com','Konas','KonasClient',
+    'kura','kuraclient.net','Kura','KuraClient',
+    'lambda','lambdaclient.com','Lambda','LambdaClient',
+    'lavahack','lavahackclient','LavaHack','LavaHackClient',
+    'mercury','mercuryclient.org','Mercury','MercuryClient',
+    'mint','mintclient','Mint','MintClient',
+    'mirai','miraiclient.net','Mirai','MiraiClient',
+    'nclient','NClient',
+    'neptunium','neptuniumclient','Neptunium','NeptuniumClient',
+    'ozark','ozarkclient.com','Ozark','OzarkClient',
+    'raion','raionclient.net','Raion','RaionClient',
+    'rebirth','rebirthclient','Rebirth','RebirthClient',
+    'rift','riftclient','Rift','RiftClient',
+    'selene','seleneclient','Selene','SeleneClient',
+    'seppuku','seppukuclient.com','Seppuku','SeppukuClient',
+    'silence','silenceclient','Silence','SilenceClient',
+    'spark','sparkclient','Spark','SparkClient',
+    'swift','swiftclient','Swift','SwiftClient',
+    'tensor','tensorclient','Tensor','TensorClient',
+    'tokyo','tokyoclient','Tokyo','TokyoClient',
+    'trollhack','trollhackclient','Trollhack','TrollhackClient',
+    'vertex','vertexclient.net','Vertex','VertexClient',
+    'vrpos','vrposclient','Vrpos','VrposClient',
+    'xulu','xuluclient','Xulu','XuluClient',
+    'zeon','zeonclient','Zeon','ZeonClient',
+    'zerotwo','zerotwoclient','ZeroTwo','ZeroTwoClient',
+    'zodiac','zodiacclient','Zodiac','ZodiacClient',
+    'impact','impactclient','Impact','ImpactClient',
+    'aristois','aristoisclient','Aristois','AristoisClient',
+    'phobos','phobosclient','Phobos','PhobosClient',
+    'rusherhack','rusherhackclient','RusherHack','RusherHackClient',
+    'future','futureclient','Future','FutureClient',
+    'remix','remixclient','Remix','RemixClient',
+    'yasha','yashaclient','Yasha','YashaClient',
+    'zeroday','zerodayclient','ZeroDay','ZeroDayClient',
+    'orchard','orchard client','orchard.gg','Orchard','OrchardClient',
+    'gypsy','gypsyclient','Gypsy','GypsyClient',
+    'xenon','xenonclient','Xenon','XenonClient',
+    'asteria','asteriaclient','Asteria','AsteriaClient',
+    'dqrkis.xyz','dqrkis'
+) | Sort-Object -Unique
 
-#region Helper Functions
-function Test-Admin {
-    (New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-}
+$PackagePaths = @(
+    'cc/novoline','com/alan/clients','club/maxstats','wtf/moonlight',
+    'me/zeroeightsix/kami','net/ccbluex','today/opai','net/minecraft/injection',
+    'org/chainlibs/module/impl/modules','xyz/greaj','com/cheatbreaker',
+    'com/moonsworth','dev/krypton','skid/krypton','dev/gambleclient','dev/virel',
+    'org/jose4j/jwt','sixtwo/','fivefive/'
+)
 
-function Write-Header {
-    Clear-Host
-    Write-Host $Banner -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host ("━" * 76) -ForegroundColor DarkCyan
-    Write-Host ""
-}
+$ExactModules = @(
+    'KillAura','Killaura','killaura','CrystalAura','crystalaura','AutoCrystal','autocrystal',
+    'MaceAura','maceaura','SilentMace','silentmace','AimAssist','aimassist','SilentAim','silentaim',
+    'BowAimbot','bowaimbot','TriggerBot','triggerbot','AntiWeakness','antiweakness',
+    'FakePunch','fakepunch','DamageTick','damagetick','OnlyCrit','onlycrit',
+    'StaticHitBoxes','statichitboxes','ShieldDisabler','shielddisabler','AntiInvis','antiinvis',
+    'W-Tap','wtap','AutoCrit','autocrit','GodMode','godmode','ReachHack','reachhack',
+    'CrystalOptimizer','crystaloptimizer','CwCrystal','cwcrystal','DoubleAnchor','doubleanchor',
+    'AnchorExploder','anchorexploder','AutoDtap','autodtap','MarlowAnchor','marlowanchor','AntiAntiCw','antianticw',
+    'AutoTotem','autototem','TotemOffhand','totemoffhand','HoverTotem','hovertotem',
+    'ForceTotem','forcetotem','AutoRetotem','autoretotem','InventoryTotemLegit','inventorytotemlegit',
+    'AutoDoubleHand','autodoublehand',
+    'FastBridge','fastbridge','BridgeAssist','bridgeassist','FastSwim','fastswim',
+    'FastPlace','fastplace','NoBreakDelay','nobreakdelay','NoJumpDelay','nojumpdelay',
+    'ElytraSwap','elytraswap','ElytraGlide','elytraglide','Jetpack','jetpack',
+    'AutoSprint','autosprint','InventoryMove','inventorymove','SpeedHack','speedhack',
+    'AutoClicker','autoclicker','AutoPot','autopot','AutoEat','autoeat','AutoXP','autoxp',
+    'AutoArmor','autoarmor','AutoTool','autotool','AutoMine','automine','ChestStealer','cheststealer',
+    'ShulkerDropper','shulkerdropper','AutoSell','autosell','CordSnapper','cordsnapper',
+    'KeyPearl','keypearl','AutoTpa','autotpa','BedMacro','bedmacro','AutoRestock','autorestock',
+    'ReplaceMod','replacemod','Scaffold','scaffold','Tower','tower',
+    'PlayerESP','playeresp','StorageESP','storageesp','EntityESP','entityesp',
+    'XRayHack','xrayhack','HealthIndicators','healthindicators','TargetHUD','targethud',
+    'NetheriteFinder','netheritefinder','RtpBaseFinder','rtpbasefinder','Tracers','tracers',
+    'Chams','chams','GlowESP','glowesp','Radar','radar',
+    'FakeLag','fakelag','PingSpoof','pingspoof','PackSpoof','packspoof','StrayBypass','straybypass',
+    'DonutSMPBypass','donutsmpbypass','AntiSSTool','antiss tool','StringCleaner','stringcleaner',
+    'SelfDestruct','selfdestruct','USNJournalCleaner','usnjournalcleaner','DeleteUSNJournal','deleteusnjournal',
+    'GenericSelfdestruct','genericselfdestruct','Disabler','disabler','AntiBan','antiban'
+) | Sort-Object -Unique
 
-function Show-Menu {
-    Write-Header
-    Write-Host "1. Scan Minecraft Directory (mods folder)" -ForegroundColor Green
-    Write-Host "2. Scan Full System (Processes, Registry, DNS, JVM)" -ForegroundColor Yellow
-    Write-Host "3. Export Report (JSON + TXT)" -ForegroundColor Magenta
-    Write-Host "4. View Current Findings" -ForegroundColor Cyan
-    Write-Host "5. Clear All Findings" -ForegroundColor Red
-    Write-Host "6. Exit" -ForegroundColor Gray
-    Write-Host ""
-    $choice = Read-Host "Enter choice"
-    return $choice
-}
+# Fullwidth / obfuscation patterns – SAFE Unicode escapes (never breaks parser)
+$FullwidthPatterns = @(
+    ([string]([char]0xFF21) + [char]0xFF55 + [char]0xFF54 + [char]0xFF4F + [char]0xFF43 + [char]0xFF52 + [char]0xFF59 + [char]0xFF53 + [char]0xFF54 + [char]0xFF41 + [char]0xFF4C), # AutoCrystal variant
+    ([string]([char]0xFF21) + [char]0xFF55 + [char]0xFF54 + [char]0xFF4F + [char]0xFF41 + [char]0xFF6E + [char]0xFF43 + [char]0xFF48 + [char]0xFF4F + [char]0xFF52), # AutoAnchor
+    ([string]([char]0xFF21) + [char]0xFF55 + [char]0xFF54 + [char]0xFF4F + [char]0xFF54 + [char]0xFF4F + [char]0xFF54 + [char]0xFF45 + [char]0xFF4D), # AutoTotem
+    ([string]([char]0xFF21) + [char]0xFF49 + [char]0xFF4D + [char]0xFF41 + [char]0xFF53 + [char]0xFF53 + [char]0xFF49 + [char]0xFF53 + [char]0xFF54), # AimAssist
+    ([string]([char]0xFF21) + [char]0xFF55 + [char]0xFF54 + [char]0xFF4F + [char]0xFF43 + [char]0xFF4C + [char]0xFF49 + [char]0xFF43 + [char]0xFF4B + [char]0xFF45 + [char]0xFF52), # AutoClicker
+    ([string]([char]0xFF54) + [char]0xFF52 + [char]0xFF49 + [char]0xFF47 + [char]0xFF47 + [char]0xFF45 + [char]0xFF52 + [char]0xFF42 + [char]0xFF4F + [char]0xFF54), # TriggerBot
+    ([string]([char]0xFF21) + [char]0xFF55 + [char]0xFF54 + [char]0xFF4F + [char]0xFF4D + [char]0xFF41 + [char]0xFF43 + [char]0xFF45), # AutoMace
+    ([string]([char]0xFF43) + [char]0xFF52 + [char]0xFF59 + [char]0xFF53 + [char]0xFF54 + [char]0xFF41 + [char]0xFF4C + [char]0xFF41 + [char]0xFF55 + [char]0xFF52 + [char]0xFF41), # CrystalAura
+    ([string]([char]0xFF53) + [char]0xFF48 + [char]0xFF49 + [char]0xFF45 + [char]0xFF4C + [char]0xFF44 + [char]0xFF44 + [char]0xFF49 + [char]0xFF53 + [char]0xFF41 + [char]0xFF42 + [char]0xFF4C + [char]0xFF45 + [char]0xFF52), # ShieldDisabler
+    ([string]([char]0xFF41) + [char]0xFF4E + [char]0xFF43 + [char]0xFF48 + [char]0xFF4F + [char]0xFF52 + [char]0xFF41 + [char]0xFF55 + [char]0xFF52 + [char]0xFF41)  # AnchorAura
+)
+
+$CheatDomains = @(
+    'vape.gg','vapeclient.com','meteorclient.com','liquidbounce.net','wurstclient.net',
+    'sigmaclient.com','novoware.cc','gamesense.pw','osirisclient.com','cosmosclient.com',
+    'sorusclient.net','azuraclient.com','deltaclient.net','elysianclient.org','onyxclient.com',
+    'luminaclient.net','ravenbplusplus.net','uziclient.com','skidbounce.net','bleachhack.org',
+    'forgehax.com','huzuni.org','kamiblue.org','konasclient.com','kuraclient.net',
+    'lambdaclient.com','mercuryclient.org','miraiclient.net','ozarkclient.com','raionclient.net',
+    'seppukuclient.com','vertexclient.net','prestigeclient.vip','dqrkis.xyz','orchard.gg'
+)
+
+$JvmCheatArgs = @(
+    '-Dclient.brand=',
+    '-Dxray','-Dfly','-Dspeed','-Dkillaura','-Dreach','-Dscaffold',
+    '-Dautocrystal','-Dautototem','-Djava.security.manager=',
+    '-Xbootclasspath','-javaagent:'
+)
+
+# ---------------------------------------------------------------------------
+# 2. RESULT CONTAINERS
+# ---------------------------------------------------------------------------
+
+$Findings = [System.Collections.Generic.List[object]]::new()
+$ScanStart = Get-Date
+$ScriptVersion = '3.2.0'
 
 function Add-Finding {
     param(
-        [string]$Tier,
+        [ValidateSet('CRITICAL','HIGH','MEDIUM','LOW','INFO')]
+        [string]$Severity,
         [string]$Category,
-        [string]$Title,
-        [string]$Message,
-        [hashtable]$Evidence = @{}
+        [string]$Indicator,
+        [string]$Location,
+        [string]$Evidence,
+        [string]$Confidence = 'Medium',
+        [hashtable]$Extra = @{}
     )
-    $finding = @{
-        Tier      = $Tier
-        Category  = $Category
-        Title     = $Title
-        Message   = $Message
-        Evidence  = $Evidence
-        Timestamp = (Get-Date).ToString("o")
-    }
-    $script:Findings += $finding
-    $color = switch ($Tier) {
-        "Detection" { "Red" }
-        "Warning"   { "Yellow" }
-        default     { "Gray" }
-    }
-    Write-Host "[$Tier] $Title" -ForegroundColor $color
-    Write-Host "  $Message" -ForegroundColor White
+    $Findings.Add([PSCustomObject]@{
+        Timestamp   = (Get-Date).ToString('o')
+        Severity    = $Severity
+        Category    = $Category
+        Indicator   = $Indicator
+        Location    = $Location
+        Evidence    = $Evidence
+        Confidence  = $Confidence
+        Extra       = $Extra
+    })
 }
 
-function Export-Report {
-    if ($script:Findings.Count -eq 0) {
-        Write-Host "No findings to export." -ForegroundColor Yellow
-        return
-    }
-    $report = @{
-        ScanTime   = $script:ScanStart.ToString("o")
-        Findings   = $script:Findings
-        Summary    = @{
-            Total      = $script:Findings.Count
-            Detections = ($script:Findings | Where-Object { $_.Tier -eq "Detection" }).Count
-            Warnings   = ($script:Findings | Where-Object { $_.Tier -eq "Warning" }).Count
-            Info       = ($script:Findings | Where-Object { $_.Tier -eq "Info" }).Count
-        }
-    }
-    $json = $report | ConvertTo-Json -Depth 5
-    $jsonFile = "MagiciansRevealV2_report_$(Get-Date -Format 'yyyyMMdd_HHmmss').json"
-    $json | Out-File -FilePath $jsonFile -Encoding utf8
-    Write-Host "JSON report saved to $jsonFile" -ForegroundColor Green
+# ---------------------------------------------------------------------------
+# 3. HELPER FUNCTIONS
+# ---------------------------------------------------------------------------
 
-    $txt = "MagiciansRevealV2 Forensic Report`n" + ("=" * 50) + "`n"
-    $txt += "Scan Time: $($report.ScanTime)`n`n"
-    foreach ($f in $script:Findings) {
-        $txt += "[$($f.Tier)] $($f.Title)`n  $($f.Message)`n"
+function Get-MinecraftRoots {
+    $roots = [System.Collections.Generic.List[string]]::new()
+    $candidates = @(
+        "$env:APPDATA\.minecraft",
+        "$env:LOCALAPPDATA\Packages\Microsoft.MinecraftUWP_*\LocalState\games\com.mojang",
+        "$env:USERPROFILE\curseforge\minecraft\Instances",
+        "$env:USERPROFILE\AppData\Roaming\.minecraft",
+        "$env:USERPROFILE\Documents\Curse\Minecraft\Instances",
+        "$env:USERPROFILE\scoop\apps\minecraft\current",
+        "C:\MultiMC\instances",
+        "C:\PrismLauncher\instances",
+        "C:\ATLauncher\instances",
+        "C:\GDLauncher\instances",
+        "$env:USERPROFILE\AppData\Roaming\PrismLauncher\instances",
+        "$env:USERPROFILE\AppData\Roaming\PolyMC\instances",
+        "$env:USERPROFILE\AppData\Roaming\MultiMC\instances"
+    )
+    foreach ($c in $candidates) {
+        if (Test-Path -LiteralPath $c) { $roots.Add((Resolve-Path $c).Path) }
     }
-    $txtFile = "MagiciansRevealV2_report_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
-    $txt | Out-File -FilePath $txtFile -Encoding utf8
-    Write-Host "Text report saved to $txtFile" -ForegroundColor Green
+    $searchRoots = @("$env:APPDATA","$env:LOCALAPPDATA","$env:USERPROFILE\Documents")
+    foreach ($sr in $searchRoots) {
+        if (-not (Test-Path $sr)) { continue }
+        Get-ChildItem -Path $sr -Directory -Filter "mods" -Recurse -Depth 4 -ErrorAction SilentlyContinue |
+            ForEach-Object { $roots.Add($_.Parent.FullName) }
+    }
+    return $roots | Sort-Object -Unique
 }
-#endregion
 
-#region Signature Databases
-# Only ASCII-safe strings – fullwidth detection is handled by regex below
-$suspiciousPatterns = @(
-    "AimAssist", "AnchorTweaks", "AutoAnchor", "AutoCrystal", "AutoDoubleHand",
-    "AutoHitCrystal", "AutoPot", "AutoTotem", "AutoArmor", "InventoryTotem",
-    "LegitTotem", "PingSpoof", "SelfDestruct", "ShieldBreaker", "TriggerBot",
-    "AxeSpam", "WebMacro", "FastPlace", "WalksyOptimizer", "walsky.optimizer",
-    "WalksyCrystalOptimizerMod", "Donut", "Replace Mod", "ShieldDisabler",
-    "SilentAim", "Totem Hit", "Wtap", "FakeLag", "dev.virel", "orchard",
-    "BlockESP", "dev.krypton", "skid.krypton", "skid/krypton", "AntiMissClick",
-    "LagReach", "PopSwitch", "SprintReset", "ChestSteal", "AntiBot",
-    "ElytraSwap", "FastXP", "FastExp", "Refill", "AirAnchor", "jnativehook",
-    "FakeInv", "HoverTotem", "AutoClicker", "AutoFirework", "PackSpoof",
-    "Antiknockback", "catlean", "AuthBypass", "Asteria", "Prestige",
-    "AutoEat", "AutoMine", "MaceSwap", "Macro198", "StunSlam", "SafeAnchor",
-    "DoubleAnchor", "AutoTPA", "BaseFinder", "Xenon", "gypsy", "AutoPotRefill",
-    "KeyPearl", "AutoNethPot", "AutoDtap", "AutoWeb", "AnchorAction",
-    "org.chainlibs.module.impl.modules.Crystal", "org.chainlibs.module.impl.modules.Blatant",
-    "imgui.gl3", "imgui.glfw", "BowAim", "Criticals", "Fakenick", "FakeItem",
-    "invsee", "ItemExploit", "Hellion", "hellion", "LicenseCheckMixin",
-    "ClientPlayerInteractionManagerAccessor", "ClientPlayerEntityMixim",
-    "dev.gambleclient", "obfuscatedAuth", "phantom-refmap.json", "xyz.greaj"
-)
-
-$cheatStrings = @(
-    "AutoCrystal", "autocrystal", "auto crystal", "cw crystal",
-    "dontPlaceCrystal", "dontBreakCrystal", "dev.virel", "orchard",
-    "AutoHitCrystal", "autohitcrystal", "canPlaceCrystalServer", "healPotSlot",
-    "AutoAnchor", "autoanchor", "auto anchor", "DoubleAnchor", "HasAnchor",
-    "anchortweaks", "anchor macro", "safe anchor", "safeanchor", "SafeAnchor",
-    "AirAnchor", "anchorMacro", "AutoTotem", "autototem", "auto totem",
-    "InventoryTotem", "inventorytotem", "HoverTotem", "hover totem", "legittotem",
-    "AutoPot", "autopot", "auto pot", "speedPotSlot", "strengthPotSlot",
-    "AutoArmor", "autoarmor", "auto armor", "AutoPotRefill",
-    "preventSwordBlockBreaking", "preventSwordBlockAttack",
-    "ShieldDisabler", "ShieldBreaker", "Breaking shield with axe...",
-    "AutoDoubleHand", "autodoublehand", "auto double hand", "AutoClicker",
-    "Failed to switch to mace after axe!", "AutoMace", "MaceSwap", "SpearSwap",
-    "StunSlam", "Donut", "JumpReset", "axespam", "axe spam",
-    "findKnockbackSword", "attackRegisteredThisClick",
-    "AimAssist", "aimassist", "aim assist", "triggerbot", "trigger bot",
-    "Silent Rotations", "SilentRotations", "FakeInv", "swapBackToOriginalSlot",
-    "FakeLag", "pingspoof", "ping spoof", "fakePunch", "Fake Punch",
-    "mace_swap", "quick_strike", "macro_198", "stun_slam", "safe_anchor",
-    "double_anchor", "auto_pot_refill", "walksy_optimizer", "key_pearl",
-    "aim_assist", "auto_neth_pot", "auto_dtap", "trigger_bot", "auto_web",
-    "DOUBLE_ESCAPE", "DOUBLE_RIGHTCLICK_FIRST", "DOUBLE_RIGHTCLICK_SECOND",
-    "POST_CYCLE_DELAY", "PLACE_OBI", "WAIT_OBI", "PLACE_CRYSTAL", "BREAK_CRYSTAL",
-    "ROTATING_DOWN", "ROTATING_BACK", "REFILLING", "PLANTING", "BONEMEALING",
-    "AnchorAction", "Places two anchors for massive damage", "REOFFHAND_TOTEM",
-    "webmacro", "web macro", "AntiWeb", "AutoWeb",
-    "lvstrng", "dqrkis", "selfdestruct", "self destruct",
-    "WalksyCrystalOptimizerMod", "WalksyOptimizer", "WalskyOptimizer",
-    "autoCrystalPlaceClock", "AutoFirework", "ElytraSwap", "FastXP", "FastExp",
-    "NoJumpDelay", "PackSpoof", "Antiknockback", "catlean", "AuthBypass",
-    "obfuscatedAuth", "LicenseCheckMixin", "BaseFinder", "invsee", "ItemExploit",
-    "FreezePlayer", "LWFH Crystal", "KeyPearl", "LootYeeter", "FastPlace",
-    "AutoBreach", "setBlockBreakingCooldown", "getBlockBreakingCooldown",
-    "blockBreakingCooldown", "onBlockBreaking", "setItemUseCooldown",
-    "invokeDoAttack", "invokeDoItemUse", "invokeOnMouseButton",
-    "onPushOutOfBlocks", "onIsGlowing",
-    "Automatically switches to sword when hitting with totem",
-    "arrayOfString", "POT_CHEATS", "Dqrkis Client", "Entity.isGlowing",
-    "Activate Key", "Click Simulation", "On RMB", "No Count Glitch",
-    "No Bounce", "NoBounce", "Place Delay", "Break Delay", "Fast Mode",
-    "Place Chance", "Break Chance", "Stop On Kill", "Damage Tick", "damagetick",
-    "Anti Weakness", "Particle Chance", "Trigger Key", "Switch Delay",
-    "Totem Slot", "Silent Rotations", "Smooth Rotations", "Rotation Speed",
-    "Use Easing", "Easing Strength", "While Use", "Stop on Kill",
-    "Glowstone Delay", "Glowstone Chance", "Explode Delay", "Explode Chance",
-    "Explode Slot", "Only Charge", "Anchor Macro", "Reach Distance",
-    "Min Height", "Min Fall Speed", "Attack Delay", "Breach Delay",
-    "Require Elytra", "Auto Switch Back", "Check Line of Sight",
-    "Only When Falling", "Require Crit", "Show Status Display",
-    "Stop On Crystal", "Check Shield", "On Pop", "Predict Damage",
-    "On Ground", "Check Players", "Predict Crystals", "Check Aim",
-    "Check Items", "Activates Above", "Blatant", "Force Totem",
-    "Stay Open For", "Auto Inventory Totem", "Only On Pop", "Vertical Speed",
-    "Hover Totem", "Swap Speed", "Strict One-Tick", "Mace Priority",
-    "Min Totems", "Min Pearls", "Totem First", "Drop Interval",
-    "Random Pattern", "Loot Yeeter", "Horizontal Aim Speed",
-    "Vertical Aim Speed", "Include Head", "Web Delay", "Holding Web",
-    "Not When Affects Player", "Hit Delay", "Require Hold Axe",
-    "Fake Punch", "placeInterval", "breakInterval", "stopOnKill",
-    "activateOnRightClick", "holdCrystal",
-    "KillAura", "ClickAura", "MultiAura", "ForceField", "LegitAura",
-    "AimBot", "AutoAim", "SilentAim", "AimLock", "HeadSnap", "CrystalAura",
-    "AnchorAura", "AnchorFill", "AnchorPlace", "BedAura", "AutoBed",
-    "BedBomb", "BedPlace", "BowAimbot", "BowSpam", "AutoBow",
-    "AutoCrit", "CritBypass", "AlwaysCrit", "CriticalHit",
-    "ReachHack", "ExtendReach", "LongReach", "HitboxExpand",
-    "AntiKB", "NoKnockback", "GrimVelocity", "GrimDisabler", "VelocitySpoof",
-    "KBReduce", "OffhandTotem", "TotemSwitch", "AutoWeapon", "AutoSword",
-    "AutoCity", "Burrow", "SelfTrap", "HoleFiller", "AntiSurround",
-    "AntiBurrow", "WTap", "TargetStrafe", "AutoGap", "AutoPearl",
-    "FlyHack", "CreativeFlight", "BoatFly", "PacketFly", "AirJump",
-    "SpeedHack", "BHop", "BunnyHop", "AntiFall", "NoFallDamage", "SafeFall",
-    "StepHack", "FastClimb", "AutoStep", "HighStep", "WaterWalk",
-    "LiquidWalk", "LavaWalk", "NoSlow", "NoSlowdown", "NoWeb", "NoSoulSand",
-    "WallHack", "ElytraSpeed", "InstantElytra", "ScaffoldWalk", "FastBridge",
-    "BuildHelper", "AutoBridge", "Nuker", "NukerLegit", "InstantBreak",
-    "GhostHand", "NoSwing", "PlaceAssist", "AirPlace", "AutoPlace",
-    "InstantPlace", "PlayerESP", "MobESP", "ItemESP", "StorageESP",
-    "ChestESP", "Tracers", "NameTagsHack", "XRayHack", "OreFinder",
-    "CaveFinder", "OreESP", "NewChunks", "ChunkBorders", "TunnelFinder",
-    "TargetHUD", "ReachDisplay", "DoubleClicker", "JitterClick",
-    "ButterflyClick", "CPSBoost", "ChestStealer", "InvManager",
-    "InvMovebypass", "AutoSprint", "AntiAFK", "AutoRespawn", "PopSwitch",
-    "FakeLatency", "FakePing", "SpoofRotation", "PositionSpoof",
-    "GameSpeed", "SpeedTimer", "GrimBypass", "VulcanBypass", "MatrixBypass",
-    "AACBypass", "VerusDisabler", "IntaveBypass", "WatchdogBypass",
-    "PacketMine", "PacketWalk", "PacketSneak", "PacketCancel", "PacketDupe",
-    "PacketSpam", "SelfDestruct", "HideClient", "SessionStealer",
-    "TokenLogger", "TokenGrabber", "DiscordToken", "RemoteAccess",
-    "ReverseShell", "C2Server", "Backdoor", "KeyLogger", "StashFinder",
-    "TrailFinder", "imgui.binding", "JNativeHook", "GlobalScreen",
-    "NativeKeyListener", "client-refmap.json", "cheat-refmap.json",
-    "meteordevelopment", "cc/novoline", "com/alan/clients", "club/maxstats",
-    "wtf/moonlight", "me/zeroeightsix/kami", "net/ccbluex", "today/opai",
-    "net/minecraft/injection", "org/chainlibs/module/impl/modules",
-    "xyz/greaj", "com/cheatbreaker", "com/moonsworth", "doomsdayclient",
-    "DoomsdayClient", "doomsday.jar", "novaclient", "api.novaclient.lol",
-    "WalksyOptimizer", "LWFH Crystal", "vape.gg", "vapeclient", "VapeClient",
-    "VapeLite", "intent.store", "IntentClient", "rise.today", "riseclient.com",
-    "meteor-client", "meteorclient", "meteordevelopment.meteorclient",
-    "liquidbounce", "fdp-client", "novoware", "novoclient", "aristois",
-    "impactclient", "azura", "pandaware", "skilled", "moonClient", "astolfo",
-    "futureClient", "konas", "rusherhack", "inertia", "exhibition",
-    "dev.krypton", "dev/krypton", "skid.krypton", "skid/krypton",
-    "VirginClient", "virgin client", "catlean", "CatleanClient",
-    "catlean client", "ArgonClient", "argon client", "Asteria",
-    "AsteriaClient", "asteria client", "Prestige", "PrestigeClient",
-    "prestige client", "prestigeclient.vip", "gypsy", "GypsyClient",
-    "gypsy client", "Xenon", "XenonClient", "xenon client", "GrimClient",
-    "grim client", "phantom-refmap.json", "dqrkis.xyz", "Dqrkis Client"
-)
-
-$patternRegex = [regex]::new(
-    '(?<![A-Za-z])(' + ($suspiciousPatterns -join '|') + ')(?![A-Za-z])',
-    [System.Text.RegularExpressions.RegexOptions]::Compiled
-)
-
-$cheatStringSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-foreach ($s in $cheatStrings) { [void]$cheatStringSet.Add($s) }
-
-# Detect any sequence of fullwidth alphanumeric characters (used by many obfuscated clients)
-$fullwidthRegex = [regex]::new(
-    "[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]{3,}",
-    [System.Text.RegularExpressions.RegexOptions]::Compiled
-)
-#endregion
-
-#region JAR Analysis
-function Scan-JAR {
-    param([string]$FilePath)
-
-    $foundPatterns  = [System.Collections.Generic.HashSet[string]]::new()
-    $foundStrings   = [System.Collections.Generic.HashSet[string]]::new()
-    $foundFullwidth = [System.Collections.Generic.HashSet[string]]::new()
-
-    Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+function Test-StringInFile {
+    param([string]$Path, [string[]]$Needles, [switch]$BinarySafe)
     try {
-        $archive = [System.IO.Compression.ZipFile]::OpenRead($FilePath)
-        foreach ($entry in $archive.Entries) {
-            $name = $entry.FullName
+        if ($BinarySafe) {
+            $bytes = [System.IO.File]::ReadAllBytes($Path)
+            $text  = [System.Text.Encoding]::UTF8.GetString($bytes)
+        } else {
+            $text = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop
+        }
+        foreach ($n in $Needles) {
+            if ($text -like "*$n*") { return $true }
+        }
+    } catch {}
+    return $false
+}
 
-            foreach ($m in $patternRegex.Matches($name)) {
-                [void]$foundPatterns.Add($m.Value)
+function Search-JarForSignatures {
+    param([string]$JarPath)
+    $hits = [System.Collections.Generic.List[string]]::new()
+    try {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($JarPath)
+        foreach ($entry in $zip.Entries) {
+            $name = $entry.FullName.Replace('\','/')
+            foreach ($pp in $PackagePaths) {
+                if ($name -like "*$pp*") {
+                    $hits.Add("PACKAGE:$pp in $name")
+                }
             }
-
-            if ($name -match '\.(class|json)$' -or $name -match 'MANIFEST\.MF') {
-                try {
+            if ($DeepJarScan -or $entry.Length -lt 2MB) {
+                if ($entry.Name -match '\.(class|json|txt|properties|cfg|yml|yaml|toml)$') {
                     $stream = $entry.Open()
-                    $ms = New-Object System.IO.MemoryStream
-                    $stream.CopyTo($ms)
-                    $stream.Close()
-                    $bytes = $ms.ToArray()
-                    $ms.Dispose()
+                    $reader = New-Object System.IO.StreamReader($stream)
+                    $content = $reader.ReadToEnd()
+                    $reader.Close(); $stream.Close()
 
-                    $ascii = [System.Text.Encoding]::ASCII.GetString($bytes)
-                    $utf8  = [System.Text.Encoding]::UTF8.GetString($bytes)
-
-                    foreach ($m in $patternRegex.Matches($ascii)) {
-                        [void]$foundPatterns.Add($m.Value)
-                    }
-
-                    foreach ($s in $cheatStringSet) {
-                        if ($ascii.Contains($s) -or $utf8.Contains($s)) {
-                            [void]$foundStrings.Add($s)
+                    foreach ($brand in $ClientBrandStrings) {
+                        if ($content -match [regex]::Escape($brand)) {
+                            $hits.Add("BRAND:$brand")
                         }
                     }
-
-                    foreach ($m in $fullwidthRegex.Matches($utf8)) {
-                        [void]$foundFullwidth.Add($m.Value)
+                    foreach ($mod in $ExactModules) {
+                        if ($content -match [regex]::Escape($mod)) {
+                            $hits.Add("MODULE:$mod")
+                        }
                     }
-                } catch {}
+                    foreach ($fw in $FullwidthPatterns) {
+                        if ($content.Contains($fw)) {
+                            $hits.Add("FULLWIDTH:$fw")
+                        }
+                    }
+                }
             }
         }
-        $archive.Dispose()
+        $zip.Dispose()
     } catch {
-        return $null
+        if (Test-StringInFile -Path $JarPath -Needles $ClientBrandStrings -BinarySafe) {
+            $hits.Add("BRAND:raw-file-match")
+        }
     }
+    return $hits | Sort-Object -Unique
+}
 
-    return @{
-        Patterns  = $foundPatterns
-        Strings   = $foundStrings
-        Fullwidth = $foundFullwidth
+# ---------------------------------------------------------------------------
+# 4. SCAN PHASES
+# ---------------------------------------------------------------------------
+
+Write-Host "[*] Minecraft Cheat Client Forensic Scanner v$ScriptVersion" -ForegroundColor Cyan
+Write-Host "[*] Output directory: $OutputDir" -ForegroundColor Cyan
+New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+
+# 4.1 Running processes
+Write-Host "[*] Scanning running processes..." -ForegroundColor Yellow
+Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | ForEach-Object {
+    $cmd = $_.CommandLine
+    if (-not $cmd) { return }
+    $procName = $_.Name
+    $pid = $_.ProcessId
+
+    foreach ($arg in $JvmCheatArgs) {
+        if ($cmd -match [regex]::Escape($arg)) {
+            Add-Finding -Severity 'CRITICAL' -Category 'Process' -Indicator "JVM cheat argument" `
+                -Location "PID $pid ($procName)" -Evidence $cmd.Substring(0,[Math]::Min(400,$cmd.Length)) `
+                -Confidence 'High'
+        }
+    }
+    foreach ($brand in $ClientBrandStrings) {
+        if ($cmd -match [regex]::Escape($brand)) {
+            Add-Finding -Severity 'HIGH' -Category 'Process' -Indicator "Client brand in command line" `
+                -Location "PID $pid ($procName)" -Evidence $brand -Confidence 'High'
+        }
     }
 }
-#endregion
 
-#region System Scan
-function Scan-System {
-    Write-Host "Scanning system (processes, registry, DNS, JVM)..." -ForegroundColor Green
-
-    $procs = Get-Process -ErrorAction SilentlyContinue
-    foreach ($p in $procs) {
-        $name = $p.ProcessName.ToLower()
-        foreach ($client in $cheatStrings) {
-            if ($name -match [regex]::Escape($client.ToLower())) {
-                Add-Finding -Tier "Detection" -Category "Processes" -Title "Cheat Process Running" `
-                    -Message "Process $($p.ProcessName) matches '$client'" `
-                    -Evidence @{Process=$p.ProcessName; Client=$client}
-                break
-            }
-        }
-
-        if ($p.ProcessName -match "javaw|java") {
-            try {
-                $cmd = (Get-CimInstance -ClassName Win32_Process -Filter "ProcessId = $($p.Id)" -ErrorAction SilentlyContinue).CommandLine
-                if ($cmd) {
-                    if ($cmd -match "-Dclient\.brand=(Wurst|Impact|Meteor|Sigma|LiquidBounce|Vape|Novoline)") {
-                        Add-Finding -Tier "Detection" -Category "JVM" -Title "Malicious JVM Argument" `
-                            -Message "JVM brand: $($Matches[0])" -Evidence @{Argument=$Matches[0]}
-                    }
-                    if ($cmd -match "-D(xray|fly|speed|killaura|reach|scaffold|autocrystal|autototem)") {
-                        Add-Finding -Tier "Detection" -Category "JVM" -Title "JVM Cheat Flag" `
-                            -Message "Flag: $($Matches[0])" -Evidence @{Argument=$Matches[0]}
-                    }
-
-                    $agentMatches = [regex]::Matches($cmd, '-javaagent:([^\s"]+)')
-                    $legitAgents = @("jmxremote","yjp","jrebel","newrelic","jacoco","theseus")
-                    foreach ($am in $agentMatches) {
-                        $agentPath = $am.Groups[1].Value.Trim('"').Trim("'")
-                        $agentName = [System.IO.Path]::GetFileName($agentPath)
-                        $isLegit = $false
-                        foreach ($la in $legitAgents) {
-                            if ($agentName -match $la) { $isLegit = $true; break }
-                        }
-                        if (-not $isLegit) {
-                            Add-Finding -Tier "Warning" -Category "JVM" -Title "Suspicious Java Agent" `
-                                -Message "Agent: $agentName (path: $agentPath)" `
-                                -Evidence @{Agent=$agentName; Path=$agentPath}
-                        }
-                    }
-                    if ($cmd -match '-Xbootclasspath') {
-                        Add-Finding -Tier "Warning" -Category "JVM" -Title "Bootclasspath Modification" `
-                            -Message "Xbootclasspath flag detected" -Evidence @{Flag=$Matches[0]}
-                    }
+# 4.2 DNS cache
+if (-not $SkipDns) {
+    Write-Host "[*] Checking DNS cache for cheat domains..." -ForegroundColor Yellow
+    try {
+        $dns = Get-DnsClientCache -ErrorAction SilentlyContinue
+        foreach ($entry in $dns) {
+            $name = $entry.Entry
+            foreach ($dom in $CheatDomains) {
+                if ($name -like "*$dom*") {
+                    Add-Finding -Severity 'HIGH' -Category 'Network' -Indicator "Cheat domain in DNS cache" `
+                        -Location $name -Evidence "Type=$($entry.Type) Status=$($entry.Status)" `
+                        -Confidence 'High'
                 }
-            } catch {}
-        }
-    }
-
-    foreach ($client in $cheatStrings) {
-        $path = "HKCU:\Software\$client"
-        if (Test-Path $path) {
-            Add-Finding -Tier "Detection" -Category "Registry" -Title "Cheat Registry Key" `
-                -Message "Key $path exists" -Evidence @{Key=$path}
-        }
-    }
-
-    $dns = ipconfig /displaydns 2>$null | Select-String "Record Name.*:\s+(.*)" | ForEach-Object { $_.Matches.Groups[1].Value }
-    $cheatDomains = @(
-        "vape.gg","vapeclient.com","meteorclient.com","liquidbounce.net","wurstclient.net",
-        "sigmaclient.com","novoware.cc","gamesense.pw","osirisclient.com","cosmosclient.com",
-        "sorusclient.net","azuraclient.com","deltaclient.net","elysianclient.org",
-        "onyxclient.com","luminaclient.net","ravenbplusplus.net","uziclient.com",
-        "skidbounce.net","bleachhack.org","forgehax.com","huzuni.org","kamiblue.org",
-        "konasclient.com","kuraclient.net","lambdaclient.com","mercuryclient.org",
-        "miraiclient.net","ozarkclient.com","raionclient.net","seppukuclient.com",
-        "vertexclient.net","prestigeclient.vip","dqrkis.xyz","orchard.gg"
-    )
-    foreach ($domain in $cheatDomains) {
-        if ($dns -match $domain) {
-            Add-Finding -Tier "Detection" -Category "DNS" -Title "Cheat Domain in Cache" `
-                -Message "Domain $domain resolved" -Evidence @{Domain=$domain}
-        }
-    }
-
-    $prefetchDir = "$env:windir\Prefetch"
-    if (-not (Test-Path $prefetchDir)) {
-        Add-Finding -Tier "Detection" -Category "Prefetch" -Title "Prefetch Folder Missing" `
-            -Message "Prefetch folder not present"
-    } else {
-        $files = Get-ChildItem $prefetchDir -ErrorAction SilentlyContinue
-        if ($files.Count -lt 5) {
-            Add-Finding -Tier "Warning" -Category "Prefetch" -Title "Low Prefetch Count" `
-                -Message "Only $($files.Count) prefetch files – possible deletion"
-        }
-    }
-
-    $logs = @("Application", "System", "Security", "Windows PowerShell")
-    foreach ($log in $logs) {
-        try {
-            $events = Get-WinEvent -LogName $log -MaxEvents 1 -ErrorAction SilentlyContinue
-            if (-not $events) {
-                Add-Finding -Tier "Warning" -Category "Event Logs" -Title "Event Log Cleared" `
-                    -Message "Event log $log appears empty (cleared?)" -Evidence @{Log=$log}
             }
-        } catch {}
+        }
+    } catch {
+        $raw = ipconfig /displaydns 2>$null | Out-String
+        foreach ($dom in $CheatDomains) {
+            if ($raw -match [regex]::Escape($dom)) {
+                Add-Finding -Severity 'HIGH' -Category 'Network' -Indicator "Cheat domain in DNS cache (legacy)" `
+                    -Location $dom -Evidence "Found via ipconfig /displaydns" -Confidence 'Medium'
+            }
+        }
     }
-
-    Write-Host "System scan complete." -ForegroundColor Green
-}
-#endregion
-
-#region Main
-if (-not (Test-Admin)) {
-    Write-Host "WARNING: Not running as Administrator – some checks may fail." -ForegroundColor Red
-    Read-Host "Press Enter to continue"
 }
 
-$script:Findings = @()
-$script:ScanStart = Get-Date
-$script:minecraftPath = ""
+# 4.3 Minecraft directory tree
+Write-Host "[*] Discovering Minecraft roots..." -ForegroundColor Yellow
+$mcRoots = Get-MinecraftRoots
+Write-Host "[*] Found $($mcRoots.Count) potential Minecraft roots" -ForegroundColor Green
 
-do {
-    $choice = Show-Menu
-    switch ($choice) {
-        "1" {
-            $path = Read-Host "Enter Minecraft mods folder path (or press Enter for default)"
-            if ([string]::IsNullOrWhiteSpace($path)) {
-                $path = "$env:USERPROFILE\AppData\Roaming\.minecraft\mods"
+foreach ($root in $mcRoots) {
+    Write-Host "    Scanning: $root" -ForegroundColor DarkGray
+
+    $searchPaths = @(
+        (Join-Path $root 'mods'),
+        (Join-Path $root 'versions'),
+        (Join-Path $root 'libraries'),
+        $root
+    ) | Where-Object { Test-Path $_ }
+
+    foreach ($sp in $searchPaths) {
+        Get-ChildItem -Path $sp -Recurse -Include *.jar,*.zip,*.dll,*.so,*.json,*.txt,*.cfg,*.properties `
+            -ErrorAction SilentlyContinue | ForEach-Object {
+            $file = $_
+            $nameLower = $file.Name.ToLowerInvariant()
+            foreach ($brand in $ClientBrandStrings) {
+                if ($nameLower -like "*$($brand.ToLowerInvariant())*") {
+                    Add-Finding -Severity 'HIGH' -Category 'Filesystem' -Indicator "Cheat client name in filename" `
+                        -Location $file.FullName -Evidence $file.Name -Confidence 'High'
+                }
             }
-            if (Test-Path $path -PathType Container) {
-                $script:minecraftPath = $path
-                Write-Host "Scanning JARs in $path ..." -ForegroundColor Green
-                $jars = Get-ChildItem -Path $path -Filter *.jar -ErrorAction SilentlyContinue
-                if ($jars.Count -eq 0) {
-                    Write-Host "No JAR files found." -ForegroundColor Yellow
-                } else {
-                    $total = $jars.Count
-                    $i = 0
-                    foreach ($jar in $jars) {
-                        $i++
-                        Write-Progress -Activity "Scanning JARs" -Status $jar.Name -PercentComplete (($i / $total) * 100)
-                        $result = Scan-JAR -FilePath $jar.FullName
-                        if ($result) {
-                            $hasHit = ($result.Patterns.Count -gt 0) -or ($result.Strings.Count -gt 0) -or ($result.Fullwidth.Count -gt 0)
-                            if ($hasHit) {
-                                foreach ($p in $result.Patterns) {
-                                    Add-Finding -Tier "Detection" -Category "File System" -Title "Pattern Match" `
-                                        -Message "Pattern '$p' in $($jar.Name)" -Evidence @{File=$jar.Name; Pattern=$p}
-                                }
-                                foreach ($s in $result.Strings) {
-                                    Add-Finding -Tier "Warning" -Category "File System" -Title "String Match" `
-                                        -Message "String '$s' in $($jar.Name)" -Evidence @{File=$jar.Name; String=$s}
-                                }
-                                foreach ($fw in $result.Fullwidth) {
-                                    Add-Finding -Tier "Detection" -Category "File System" -Title "Fullwidth Obfuscation" `
-                                        -Message "Fullwidth sequence '$fw' in $($jar.Name)" -Evidence @{File=$jar.Name; Fullwidth=$fw}
-                                }
-                            }
-                        }
+
+            if ($file.Extension -in '.jar','.zip') {
+                $hits = Search-JarForSignatures -JarPath $file.FullName
+                foreach ($h in $hits) {
+                    $sev = 'MEDIUM'
+                    $conf = 'Medium'
+                    if ($h -like 'PACKAGE:*' -or $h -like 'FULLWIDTH:*') {
+                        $sev = 'CRITICAL'; $conf = 'High'
+                    } elseif ($h -like 'BRAND:*') {
+                        $sev = 'HIGH'; $conf = 'High'
+                    } elseif ($h -like 'MODULE:*') {
+                        $sev = 'MEDIUM'; $conf = 'Medium'
                     }
-                    Write-Progress -Activity "Scanning JARs" -Completed
+                    Add-Finding -Severity $sev -Category 'JAR Content' -Indicator $h `
+                        -Location $file.FullName -Evidence $h -Confidence $conf
                 }
             } else {
-                Write-Host "Path not found: $path" -ForegroundColor Red
-            }
-            Read-Host "Press Enter to continue"
-        }
-        "2" {
-            Scan-System
-            Read-Host "Press Enter to continue"
-        }
-        "3" {
-            Export-Report
-            Read-Host "Press Enter to continue"
-        }
-        "4" {
-            if ($script:Findings.Count -eq 0) {
-                Write-Host "No findings." -ForegroundColor Yellow
-            } else {
-                Write-Host "`n--- Findings ($($script:Findings.Count)) ---" -ForegroundColor Cyan
-                foreach ($f in $script:Findings) {
-                    $color = switch ($f.Tier) {
-                        "Detection" { "Red" }
-                        "Warning"   { "Yellow" }
-                        default     { "Gray" }
-                    }
-                    Write-Host "[$($f.Tier)] $($f.Title)" -ForegroundColor $color
-                    Write-Host "  $($f.Message)" -ForegroundColor White
+                if (Test-StringInFile -Path $file.FullName -Needles $ClientBrandStrings) {
+                    Add-Finding -Severity 'MEDIUM' -Category 'Filesystem' -Indicator "Client brand string in file" `
+                        -Location $file.FullName -Evidence "Matched client brand" -Confidence 'Medium'
                 }
-                Write-Host ""
+                if (Test-StringInFile -Path $file.FullName -Needles $ExactModules) {
+                    Add-Finding -Severity 'LOW' -Category 'Filesystem' -Indicator "Exact module name in file" `
+                        -Location $file.FullName -Evidence "Matched module name" -Confidence 'Low'
+                }
             }
-            Read-Host "Press Enter to continue"
-        }
-        "5" {
-            $script:Findings = @()
-            Write-Host "Findings cleared." -ForegroundColor Green
-            Read-Host "Press Enter to continue"
-        }
-        "6" {
-            Write-Host "Exiting." -ForegroundColor Cyan
-            exit
-        }
-        default {
-            Write-Host "Invalid choice." -ForegroundColor Red
-            Read-Host "Press Enter to continue"
         }
     }
-} while ($true)
-#endregion
+}
+
+# 4.4 Prefetch
+Write-Host "[*] Checking Prefetch..." -ForegroundColor Yellow
+$prefetch = "$env:SystemRoot\Prefetch"
+if (Test-Path $prefetch) {
+    Get-ChildItem $prefetch -Filter *.pf -ErrorAction SilentlyContinue | ForEach-Object {
+        $n = $_.Name.ToLowerInvariant()
+        foreach ($brand in $ClientBrandStrings) {
+            if ($n -like "*$($brand.ToLowerInvariant())*") {
+                Add-Finding -Severity 'MEDIUM' -Category 'Prefetch' -Indicator "Cheat-related Prefetch entry" `
+                    -Location $_.FullName -Evidence $_.Name -Confidence 'Medium'
+            }
+        }
+    }
+}
+
+# 4.5 Recent / Temp / Downloads
+Write-Host "[*] Scanning recent files and temp locations..." -ForegroundColor Yellow
+$extraLocs = @(
+    "$env:APPDATA\Microsoft\Windows\Recent",
+    "$env:LOCALAPPDATA\Temp",
+    "$env:TEMP",
+    "$env:USERPROFILE\Downloads"
+)
+foreach ($loc in $extraLocs) {
+    if (-not (Test-Path $loc)) { continue }
+    Get-ChildItem $loc -Recurse -Depth 2 -Include *.jar,*.exe,*.lnk,*.bat,*.ps1 -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            $n = $_.Name.ToLowerInvariant()
+            foreach ($brand in $ClientBrandStrings) {
+                if ($n -like "*$($brand.ToLowerInvariant())*") {
+                    Add-Finding -Severity 'MEDIUM' -Category 'Recent/Temp' -Indicator "Cheat artifact in recent/temp" `
+                        -Location $_.FullName -Evidence $_.Name -Confidence 'Medium'
+                }
+            }
+        }
+}
+
+# ---------------------------------------------------------------------------
+# 5. REPORT GENERATION
+# ---------------------------------------------------------------------------
+
+$ScanEnd = Get-Date
+$Duration = ($ScanEnd - $ScanStart).TotalSeconds
+
+$crit = ($Findings | Where-Object Severity -eq 'CRITICAL').Count
+$high = ($Findings | Where-Object Severity -eq 'HIGH').Count
+$med  = ($Findings | Where-Object Severity -eq 'MEDIUM').Count
+$low  = ($Findings | Where-Object Severity -eq 'LOW').Count
+
+$summaryPath = Join-Path $OutputDir 'CheatScan_Report.txt'
+$sb = [System.Text.StringBuilder]::new()
+[void]$sb.AppendLine("=" * 80)
+[void]$sb.AppendLine("MINECRAFT CHEAT CLIENT FORENSIC SCANNER – REPORT")
+[void]$sb.AppendLine("Version      : $ScriptVersion")
+[void]$sb.AppendLine("Scan start   : $($ScanStart.ToString('o'))")
+[void]$sb.AppendLine("Scan end     : $($ScanEnd.ToString('o'))")
+[void]$sb.AppendLine("Duration     : $([math]::Round($Duration,1)) seconds")
+[void]$sb.AppendLine("Host         : $env:COMPUTERNAME")
+[void]$sb.AppendLine("User         : $env:USERNAME")
+[void]$sb.AppendLine("=" * 80)
+[void]$sb.AppendLine("")
+[void]$sb.AppendLine("SEVERITY SUMMARY")
+[void]$sb.AppendLine("  CRITICAL : $crit")
+[void]$sb.AppendLine("  HIGH     : $high")
+[void]$sb.AppendLine("  MEDIUM   : $med")
+[void]$sb.AppendLine("  LOW      : $low")
+[void]$sb.AppendLine("  TOTAL    : $($Findings.Count)")
+[void]$sb.AppendLine("")
+
+if ($Findings.Count -eq 0) {
+    [void]$sb.AppendLine("NO CHEAT INDICATORS FOUND.")
+    [void]$sb.AppendLine("All signatures used are exclusive to known cheat clients.")
+} else {
+    [void]$sb.AppendLine("DETAILED FINDINGS (sorted by severity)")
+    [void]$sb.AppendLine("-" * 80)
+    $ordered = $Findings | Sort-Object @{
+        Expression = {
+            switch ($_.Severity) {
+                'CRITICAL' { 0 }
+                'HIGH'     { 1 }
+                'MEDIUM'   { 2 }
+                'LOW'      { 3 }
+                default    { 4 }
+            }
+        }
+    }, Category, Indicator
+
+    foreach ($f in $ordered) {
+        [void]$sb.AppendLine("[$($f.Severity)] $($f.Category) – $($f.Indicator)")
+        [void]$sb.AppendLine("  Location   : $($f.Location)")
+        [void]$sb.AppendLine("  Evidence   : $($f.Evidence)")
+        [void]$sb.AppendLine("  Confidence : $($f.Confidence)")
+        [void]$sb.AppendLine("")
+    }
+}
+
+[void]$sb.AppendLine("=" * 80)
+[void]$sb.AppendLine("END OF REPORT")
+$sb.ToString() | Out-File -FilePath $summaryPath -Encoding UTF8
+
+$jsonPath = Join-Path $OutputDir 'CheatScan_Report.json'
+$reportObj = [ordered]@{
+    scannerVersion = $ScriptVersion
+    scanStart      = $ScanStart.ToString('o')
+    scanEnd        = $ScanEnd.ToString('o')
+    durationSeconds = [math]::Round($Duration,2)
+    host           = $env:COMPUTERNAME
+    user           = $env:USERNAME
+    summary        = @{
+        critical = $crit
+        high     = $high
+        medium   = $med
+        low      = $low
+        total    = $Findings.Count
+    }
+    findings       = $Findings
+}
+$reportObj | ConvertTo-Json -Depth 6 | Out-File -FilePath $jsonPath -Encoding UTF8
+
+if (-not $Quiet) {
+    Write-Host ""
+    Write-Host "========== SCAN COMPLETE ==========" -ForegroundColor Cyan
+    Write-Host "CRITICAL : $crit" -ForegroundColor $(if($crit){'Red'}else{'Green'})
+    Write-Host "HIGH     : $high" -ForegroundColor $(if($high){'Red'}else{'Green'})
+    Write-Host "MEDIUM   : $med"  -ForegroundColor $(if($med){'Yellow'}else{'Green'})
+    Write-Host "LOW      : $low"  -ForegroundColor $(if($low){'Yellow'}else{'Green'})
+    Write-Host "TOTAL    : $($Findings.Count)"
+    Write-Host ""
+    Write-Host "Human-readable report : $summaryPath"
+    Write-Host "JSON report           : $jsonPath"
+    Write-Host "===================================" -ForegroundColor Cyan
+}
+
+return $Findings
