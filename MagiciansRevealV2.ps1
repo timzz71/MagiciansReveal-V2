@@ -118,7 +118,9 @@ function Scan-AllJavaMemory {
         $uptime = if ($created) { ((Get-Date) - $created).ToString('dd\.hh\:mm\:ss') } else { 'unknown' }
         Write-Host "PID $($p.Id) | $($p.ProcessName) | Started: $created | Uptime: $uptime" -ForegroundColor White
         Add-Finding -Tier "Info" -Category "Java Process" -Title "Java Scan Target" -Message "PID $($p.Id), $($p.ProcessName), uptime $uptime" -Evidence @{PID=$p.Id; Startup=$created; Uptime=$uptime; CommandLine=$cmd}
-        Scan-JavaMemory -ProcessId $p.Id
+        # Live RAM inspection disabled: some Java runtimes can block indefinitely
+        # inside ReadProcessMemory. The normal scan remains fully responsive.
+        Write-Host "RAM scan skipped; continuing with filesystem and process evidence." -ForegroundColor DarkGray
     }
 }
 
