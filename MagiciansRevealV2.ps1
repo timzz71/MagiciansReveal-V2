@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    MagiciansReveal v4.0 – Professional Minecraft Cheat Forensic Scanner
+    MagiciansReveal v2.0 – Professional Minecraft Cheat Forensic Scanner
 .DESCRIPTION
     Detects injectable clients, self-destructing cheats, residual artifacts,
     JVM injection and live process memory signatures (Meow-style detection).
@@ -25,7 +25,7 @@ function Write-Banner {
     Write-Host "  ║                                                                          ║" -ForegroundColor DarkYellow
     Write-Host "  ║                      M A G I C I A N S   R E V E A L                     ║" -ForegroundColor Yellow
     Write-Host "  ║                                                                          ║" -ForegroundColor DarkYellow
-    Write-Host "  ║              Professional Cheat Forensic Scanner  •  v4.0                ║" -ForegroundColor White
+    Write-Host "  ║              Professional Cheat Forensic Scanner  •  V2.0                ║" -ForegroundColor White
     Write-Host "  ║                                                                          ║" -ForegroundColor DarkYellow
     Write-Host "  ╚══════════════════════════════════════════════════════════════════════════╝" -ForegroundColor DarkYellow
     Write-Host ""
@@ -500,7 +500,7 @@ do {
             } else {
                 $name = "MagiciansReveal_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
                 $script:Findings | ConvertTo-Json -Depth 5 | Out-File "$name.json" -Encoding utf8
-                $txt = "Magicians Reveal v4.0 Report`n" + ("="*55) + "`n`n"
+                $txt = "Magicians Reveal V2.0 Report`n" + ("="*55) + "`n`n"
                 foreach ($f in $script:Findings) {
                     $txt += "[$($f.Severity)] $($f.Title)`n  $($f.Details)`n`n"
                 }
