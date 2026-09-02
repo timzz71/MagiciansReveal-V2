@@ -67,10 +67,11 @@ public static class MagiciansRevealNativeMemory {
   }
   const uint VM_READ=0x10, QUERY=0x400, COMMIT=0x1000, GUARD=0x100, NOACCESS=1;
   static bool Readable(uint p) { p &= 0xff; return p!=NOACCESS && p!=0; }
-  public static string[] Scan(int pid, string[] needles, int maxRegionMB, int maxTotalMB) {
+  public static string[] Scan(int pid, string[] needles, int maxRegionMB, int maxTotalMB, int timeoutSeconds) {
     var found=new HashSet<string>(StringComparer.OrdinalIgnoreCase); var h=OpenProcess(VM_READ|QUERY,false,pid); if(h==IntPtr.Zero)return new string[0];
-    try { IntPtr a=IntPtr.Zero; long cap=(long)maxRegionMB*1024*1024; long total=0; int regions=0;
+    try { var watch=System.Diagnostics.Stopwatch.StartNew(); IntPtr a=IntPtr.Zero; long cap=(long)maxRegionMB*1024*1024; long total=0; int regions=0;
       while(true) { MBI m; if(VirtualQueryEx(h,a,out m,(IntPtr)Marshal.SizeOf(typeof(MBI)))==IntPtr.Zero)break; long n=(long)m.RegionSize; if(n<=0)break;
+        if(watch.Elapsed.TotalSeconds >= timeoutSeconds) break;
         if(m.State==COMMIT && (m.Protect&GUARD)==0 && Readable(m.Protect) && n<=cap && total < (long)maxTotalMB*1024*1024) {
           regions++; int chunk=4*1024*1024; byte[] b=new byte[chunk]; for(long off=0;off<n && total < (long)maxTotalMB*1024*1024;off+=chunk) { int want=(int)Math.Min(chunk,n-off); IntPtr got; if(!ReadProcessMemory(h,IntPtr.Add(m.Base,(int)Math.Min(off,int.MaxValue)),b,want,out got))continue; int count=got.ToInt64()>int.MaxValue?0:(int)got.ToInt64(); if(count==0)continue; total+=count;
             string s=Encoding.ASCII.GetString(b,0,count); string u=Encoding.Unicode.GetString(b,0,count-(count%2));
@@ -87,8 +88,8 @@ function Scan-JavaMemory {
     param([int]$ProcessId)
     Write-Host "Scanning readable memory for Java PID $ProcessId..." -ForegroundColor Green
     try {
-        Write-Host "Reading up to 768 MB of readable Java memory (4 MB chunks)..." -ForegroundColor DarkGray
-        $hits = [MagiciansRevealNativeMemory]::Scan($ProcessId, [string[]]$cheatStrings, 512, 768)
+        Write-Host "Reading up to 768 MB of readable Java memory (4 MB chunks, 45-second limit)..." -ForegroundColor DarkGray
+        $hits = [MagiciansRevealNativeMemory]::Scan($ProcessId, [string[]]$cheatStrings, 512, 768, 45)
         foreach ($hit in $hits) {
             Add-Finding -Tier "Detection" -Category "Process Memory" -Title "Signature Found in Java Memory" `
                 -Message "'$hit' found in readable memory of PID $ProcessId" -Evidence @{PID=$ProcessId; String=$hit}
