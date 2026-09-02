@@ -1,4 +1,4 @@
-# 🧙‍♂️ Magicians Reveal v3.0
+# 🧙‍♂️ Magicians Reveal V2.0
 
 ### 🕵️ Professional Minecraft Cheat Forensic Scanner
 
@@ -89,7 +89,7 @@ Analysis is local except for the optional Modrinth SHA-1 lookup performed by the
 
 ## ⚠️ Limitations
 
-This v3.0 script does not read arbitrary Java process RAM. It cannot guarantee recovery if files, memory strings, or filesystem records have been erased or overwritten. USN Journal retention varies by system. Generic strings may also occur in legitimate software, so review paths, timestamps, and correlated evidence before taking action.
+This V2.0 script does not read arbitrary Java process RAM. It cannot guarantee recovery if files, memory strings, or filesystem records have been erased or overwritten. USN Journal retention varies by system. Generic strings may also occur in legitimate software, so review paths, timestamps, and correlated evidence before taking action.
 
 ## 🔐 Authorized Use
 
